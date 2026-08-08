@@ -1,42 +1,160 @@
-version: '3.8'
+name: swifttrack
 
 networks:
   swift-network:
     driver: bridge
 
+volumes:
+  pgdata:
+
 services:
+  # ---------------------------------------------------------------------
+  # Infrastructure
+  # ---------------------------------------------------------------------
   postgres:
-    image: postgres:15-alpine
+    image: postgres:16-alpine
     container_name: swift-postgres
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: swiftlogistics
-      POSTGRES_USER: swift_user
-      POSTGRES_PASSWORD: secretpassword
+      POSTGRES_DB: swifttrack
+      POSTGRES_USER: swift_admin
+      POSTGRES_PASSWORD: swift_pw_dev_only
     ports:
       - "5432:5432"
     volumes:
-      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - swift-network
+      - pgdata:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U swift_user -d swiftlogistics"]
+      test: ["CMD-SHELL", "pg_isready -U swift_admin -d swifttrack"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+    networks:
+      - swift-network
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: swift-rabbitmq
-    ports:
-      - "5672:5672"
-      - "15672:15672"
+    restart: unless-stopped
     environment:
-      RABBITMQ_DEFAULT_USER: guest
-      RABBITMQ_DEFAULT_PASS: guest
-    networks:
-      - swift-network
+      RABBITMQ_DEFAULT_USER: swift_admin
+      RABBITMQ_DEFAULT_PASS: swift_pw_dev_only
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI (http://localhost:15672)
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+    networks:
+      - swift-network
+
+  # ---------------------------------------------------------------------
+  # Backend business systems (owned by M1 / M2 / M3 — Phase 2)
+  # Build contexts below assume each teammate creates a Dockerfile in
+  # their respective folder. Placeholders until Phase 2 lands.
+  # ---------------------------------------------------------------------
+  cms-service:
+    build:
+      context: ./cms-service
+    container_name: swift-cms
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_URL: postgresql://swift_admin:swift_pw_dev_only@postgres:5432/swifttrack
+      RABBITMQ_URL: amqp://swift_admin:swift_pw_dev_only@rabbitmq:5672
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - swift-network
+
+  ros-service:
+    build:
+      context: ./ros-service
+    container_name: swift-ros
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    environment:
+      RABBITMQ_URL: amqp://swift_admin:swift_pw_dev_only@rabbitmq:5672
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - swift-network
+
+  wms-service:
+    build:
+      context: ./wms-service
+    container_name: swift-wms
+    restart: unless-stopped
+    ports:
+      - "8003:8003"  # REST/health
+      - "9000:9000"  # proprietary TCP protocol
+    environment:
+      DATABASE_URL: postgresql://swift_admin:swift_pw_dev_only@postgres:5432/swifttrack
+      RABBITMQ_URL: amqp://swift_admin:swift_pw_dev_only@rabbitmq:5672
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - swift-network
+
+  # ---------------------------------------------------------------------
+  # API Gateway (M4 — Phase 1 scaffold, Phase 3/5 protocol bridging + saga)
+  # ---------------------------------------------------------------------
+  api-gateway:
+    build:
+      context: ./api-gateway
+    container_name: swift-gateway
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgresql://swift_admin:swift_pw_dev_only@postgres:5432/swifttrack
+      RABBITMQ_URL: amqp://swift_admin:swift_pw_dev_only@rabbitmq:5672
+      CMS_SOAP_URL: http://cms-service:8001/soap
+      ROS_REST_URL: http://ros-service:8002
+      WMS_TCP_HOST: wms-service
+      WMS_TCP_PORT: 9000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - swift-network
+
+  # ---------------------------------------------------------------------
+  # Frontends (M5 / M6 — Phase 4)
+  # ---------------------------------------------------------------------
+  client-portal:
+    build:
+      context: ./client-portal
+    container_name: swift-client-portal
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - api-gateway
+    networks:
+      - swift-network
+
+  driver-app:
+    build:
+      context: ./driver-app
+    container_name: swift-driver-app
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    depends_on:
+      - api-gateway
+    networks:
+      - swift-network

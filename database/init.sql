@@ -1,84 +1,184 @@
+-- =====================================================================
+-- SwiftTrack — PostgreSQL Schema & Seed Data
+-- SCS3208 Middleware Architecture | Assignment 4 | Phase 1, Step 1.1
+-- =====================================================================
+-- This script runs automatically on first container start when mounted
+-- to /docker-entrypoint-initdb.d/ in the postgres service (see
+-- docker-compose.yml). It will NOT re-run on subsequent restarts unless
+-- the postgres data volume is deleted.
+-- =====================================================================
+
+-- ---------------------------------------------------------------------
+-- Extensions
+-- ---------------------------------------------------------------------
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- Clients Table
-CREATE TABLE IF NOT EXISTS clients (
-    client_id VARCHAR(50) PRIMARY KEY,
-    company_name VARCHAR(100) NOT NULL,
-    email VARCHAR(100) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    contract_type VARCHAR(50) DEFAULT 'STANDARD'
+-- ---------------------------------------------------------------------
+-- clients — e-commerce companies using the SwiftTrack client portal
+-- ---------------------------------------------------------------------
+CREATE TABLE clients (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    client_code     VARCHAR(20)  UNIQUE NOT NULL,        -- e.g. CLT001
+    company_name    VARCHAR(150) NOT NULL,
+    contact_person  VARCHAR(100),
+    email           VARCHAR(150) UNIQUE NOT NULL,
+    password_hash   VARCHAR(100) NOT NULL,                -- bcrypt
+    phone           VARCHAR(30),
+    address          TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Drivers Table
-CREATE TABLE IF NOT EXISTS drivers (
-    driver_id VARCHAR(50) PRIMARY KEY,
-    name VARCHAR(100) NOT NULL,
-    email VARCHAR(100) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    vehicle_type VARCHAR(50) DEFAULT 'VAN'
+-- ---------------------------------------------------------------------
+-- drivers — SwiftTrack driver app users
+-- ---------------------------------------------------------------------
+CREATE TABLE drivers (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    driver_code     VARCHAR(20)  UNIQUE NOT NULL,        -- e.g. DRV001
+    name            VARCHAR(100) NOT NULL,
+    email           VARCHAR(150) UNIQUE NOT NULL,
+    password_hash   VARCHAR(100) NOT NULL,
+    phone           VARCHAR(30),
+    vehicle_id      VARCHAR(30),
+    status          VARCHAR(20)  NOT NULL DEFAULT 'off_duty'
+                        CHECK (status IN ('off_duty','on_duty','on_route')),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Orders Table
-CREATE TABLE IF NOT EXISTS orders (
-    order_id VARCHAR(50) PRIMARY KEY,
-    client_id VARCHAR(50) REFERENCES clients(client_id),
-    pickup_address TEXT NOT NULL,
-    delivery_address TEXT NOT NULL,
-    pickup_lat NUMERIC(10, 6),
-    pickup_lng NUMERIC(10, 6),
-    delivery_lat NUMERIC(10, 6),
-    delivery_lng NUMERIC(10, 6),
-    weight NUMERIC(6, 2),
-    status VARCHAR(50) DEFAULT 'PENDING',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- ---------------------------------------------------------------------
+-- orders — created via CMS, tracked across ROS/WMS
+-- ---------------------------------------------------------------------
+CREATE TABLE orders (
+    id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    order_code          VARCHAR(30) UNIQUE NOT NULL,
+    client_id           UUID NOT NULL REFERENCES clients(id) ON DELETE RESTRICT,
+    pickup_address       TEXT NOT NULL,
+    delivery_address    TEXT NOT NULL,
+    recipient_name      VARCHAR(100),
+    recipient_phone     VARCHAR(30),
+    priority            VARCHAR(10) NOT NULL DEFAULT 'normal'
+                            CHECK (priority IN ('normal','high','urgent')),
+    weight_kg           NUMERIC(6,2),
+    status              VARCHAR(20) NOT NULL DEFAULT 'pending'
+                            CHECK (status IN
+                                ('pending','processing','assigned',
+                                 'out_for_delivery','delivered','failed','cancelled')),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Packages Table
-CREATE TABLE IF NOT EXISTS packages (
-    package_id VARCHAR(50) PRIMARY KEY,
-    order_id VARCHAR(50) REFERENCES orders(order_id),
-    barcode VARCHAR(100) UNIQUE NOT NULL,
-    warehouse_location VARCHAR(50),
-    status VARCHAR(50) DEFAULT 'RECEIVED'
+-- ---------------------------------------------------------------------
+-- packages — WMS-side tracking of physical items per order
+-- ---------------------------------------------------------------------
+CREATE TABLE packages (
+    id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    order_id            UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    barcode             VARCHAR(50) UNIQUE NOT NULL,
+    warehouse_zone      VARCHAR(20),                      -- e.g. Zone B-1
+    bin_location        VARCHAR(20),
+    status              VARCHAR(20) NOT NULL DEFAULT 'received'
+                            CHECK (status IN
+                                ('received','stored','picked','loaded','dispatched')),
+    warehouse_event_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Routes Table
-CREATE TABLE IF NOT EXISTS routes (
-    route_id VARCHAR(50) PRIMARY KEY,
-    driver_id VARCHAR(50) REFERENCES drivers(driver_id),
-    date DATE DEFAULT CURRENT_DATE,
-    status VARCHAR(50) DEFAULT 'ASSIGNED'
+-- ---------------------------------------------------------------------
+-- routes — one per driver per day, generated by ROS
+-- ---------------------------------------------------------------------
+CREATE TABLE routes (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    driver_id       UUID NOT NULL REFERENCES drivers(id) ON DELETE RESTRICT,
+    route_date      DATE NOT NULL,
+    status          VARCHAR(20) NOT NULL DEFAULT 'planned'
+                        CHECK (status IN ('planned','in_progress','completed')),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (driver_id, route_date)
 );
 
--- Route Stops Table
-CREATE TABLE IF NOT EXISTS route_stops (
-    id SERIAL PRIMARY KEY,
-    route_id VARCHAR(50) REFERENCES routes(route_id),
-    order_id VARCHAR(50) REFERENCES orders(order_id),
-    sequence_number INT NOT NULL,
-    estimated_arrival VARCHAR(50),
-    status VARCHAR(50) DEFAULT 'PENDING'
+-- ---------------------------------------------------------------------
+-- route_stops — ordered stops within a route, one per order
+-- ---------------------------------------------------------------------
+CREATE TABLE route_stops (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    route_id        UUID NOT NULL REFERENCES routes(id) ON DELETE CASCADE,
+    order_id        UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    sequence_index  INTEGER NOT NULL,
+    latitude        NUMERIC(9,6),
+    longitude       NUMERIC(9,6),
+    eta             TIMESTAMPTZ,
+    stop_status     VARCHAR(20) NOT NULL DEFAULT 'pending'
+                        CHECK (stop_status IN ('pending','arrived','completed','skipped')),
+    UNIQUE (route_id, sequence_index)
 );
 
--- Transaction Logs (Saga Monitoring)
-CREATE TABLE IF NOT EXISTS transaction_logs (
-    transaction_id VARCHAR(50) PRIMARY KEY,
-    order_id VARCHAR(50) REFERENCES orders(order_id),
-    cms_status VARCHAR(50) DEFAULT 'PENDING',
-    ros_status VARCHAR(50) DEFAULT 'PENDING',
-    wms_status VARCHAR(50) DEFAULT 'PENDING',
-    overall_status VARCHAR(50) DEFAULT 'IN_PROGRESS'
+-- ---------------------------------------------------------------------
+-- delivery_proofs — signature / photo proof captured by drivers
+-- ---------------------------------------------------------------------
+CREATE TABLE delivery_proofs (
+    id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    order_id            UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    driver_id           UUID NOT NULL REFERENCES drivers(id) ON DELETE RESTRICT,
+    delivery_status     VARCHAR(10) NOT NULL
+                            CHECK (delivery_status IN ('delivered','failed')),
+    failure_reason      VARCHAR(150),                    -- e.g. "recipient not available"
+    signature_base64    TEXT,
+    photo_base64        TEXT,
+    captured_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Seed Data (Password: password123)
-INSERT INTO clients (client_id, company_name, email, password_hash, contract_type)
-VALUES 
-  ('CLT001', 'TechMart E-Commerce', 'techmart@example.com', '$2b$10$EpReh5V9p8C.8g3cR2v1eO4xWz3vR9g8c2e1v0w9x8y7z6a5b4c3d', 'PREMIUM'),
-  ('CLT002', 'Lanka Retail', 'info@lankaretail.lk', '$2b$10$EpReh5V9p8C.8g3cR2v1eO4xWz3vR9g8c2e1v0w9x8y7z6a5b4c3d', 'STANDARD')
-ON CONFLICT (client_id) DO NOTHING;
+-- ---------------------------------------------------------------------
+-- transaction_logs — Saga step log for the distributed order transaction
+-- ---------------------------------------------------------------------
+CREATE TABLE transaction_logs (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    order_id        UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+    saga_step       VARCHAR(30) NOT NULL,                 -- e.g. CMS_CREATE, ROS_ASSIGN, WMS_ALLOCATE
+    status          VARCHAR(15) NOT NULL
+                        CHECK (status IN ('started','completed','failed','compensated')),
+    payload         JSONB,
+    error_message   TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
-INSERT INTO drivers (driver_id, name, email, password_hash, vehicle_type)
-VALUES 
-  ('DRV001', 'Kamal Perera', 'kamal@swiftlogistics.lk', '$2b$10$EpReh5V9p8C.8g3cR2v1eO4xWz3vR9g8c2e1v0w9x8y7z6a5b4c3d', 'VAN'),
-  ('DRV002', 'Nimal Silva', 'nimal@swiftlogistics.lk', '$2b$10$EpReh5V9p8C.8g3cR2v1eO4xWz3vR9g8c2e1v0w9x8y7z6a5b4c3d', 'THREE_WHEELER')
-ON CONFLICT (driver_id) DO NOTHING;
+-- ---------------------------------------------------------------------
+-- Indexes for common lookups
+-- ---------------------------------------------------------------------
+CREATE INDEX idx_orders_client_id       ON orders(client_id);
+CREATE INDEX idx_orders_status          ON orders(status);
+CREATE INDEX idx_packages_order_id      ON packages(order_id);
+CREATE INDEX idx_packages_barcode       ON packages(barcode);
+CREATE INDEX idx_route_stops_route_id   ON route_stops(route_id);
+CREATE INDEX idx_route_stops_order_id   ON route_stops(order_id);
+CREATE INDEX idx_transaction_logs_order ON transaction_logs(order_id);
+
+-- =====================================================================
+-- Seed Data
+-- Demo password for ALL seeded accounts is: password123
+-- Hash generated with bcrypt, cost factor 10.
+-- =====================================================================
+
+INSERT INTO clients (client_code, company_name, contact_person, email, password_hash, phone, address) VALUES
+('CLT001', 'TechMart Electronics', 'Nadeesha Perera', 'techmart@example.com',
+ '$2b$10$EKGAB9jYyE6Okdn4/zyn2uB3wqIFtx8WAoecFEkqOcyfFe2uOVlbm',
+ '+94 71 234 5678', '45 Galle Road, Colombo 03'),
+('CLT002', 'Kandy Craft Sellers', 'Ruwan Fernando', 'kandycraft@example.com',
+ '$2b$10$EKGAB9jYyE6Okdn4/zyn2uB3wqIFtx8WAoecFEkqOcyfFe2uOVlbm',
+ '+94 77 345 6789', '12 Peradeniya Road, Kandy');
+
+INSERT INTO drivers (driver_code, name, email, password_hash, phone, vehicle_id, status) VALUES
+('DRV001', 'Kasun Jayasuriya', 'driver1@example.com',
+ '$2b$10$EKGAB9jYyE6Okdn4/zyn2uB3wqIFtx8WAoecFEkqOcyfFe2uOVlbm',
+ '+94 70 111 2222', 'WP-CAB-4521', 'off_duty'),
+('DRV002', 'Ishara Wickramasinghe', 'driver2@example.com',
+ '$2b$10$EKGAB9jYyE6Okdn4/zyn2uB3wqIFtx8WAoecFEkqOcyfFe2uOVlbm',
+ '+94 70 333 4444', 'WP-CAB-7789', 'off_duty');
+
+-- A couple of demo orders so Phase 2/3 devs have data to work against immediately
+INSERT INTO orders (order_code, client_id, pickup_address, delivery_address, recipient_name, recipient_phone, priority, weight_kg, status)
+SELECT 'ORD-0001', id, '45 Galle Road, Colombo 03', '10 Havelock Road, Colombo 05',
+       'Sanduni Silva', '+94 76 555 1111', 'normal', 2.4, 'pending'
+FROM clients WHERE client_code = 'CLT001';
+
+INSERT INTO orders (order_code, client_id, pickup_address, delivery_address, recipient_name, recipient_phone, priority, weight_kg, status)
+SELECT 'ORD-0002', id, '12 Peradeniya Road, Kandy', '5 Lake Drive, Kandy',
+       'Chamara Bandara', '+94 76 555 2222', 'high', 5.1, 'pending'
+FROM clients WHERE client_code = 'CLT002';
