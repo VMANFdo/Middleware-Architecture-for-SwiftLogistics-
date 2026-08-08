@@ -21,40 +21,39 @@ even if a backend system is temporarily down.
 ## 2. Architecture Overview
 
 ```
-                     ┌─────────────────┐        ┌──────────────────┐
-                     │  Client Portal   │        │   Driver App      │
-                     │     :8080        │        │     :8081         │
-                     └────────┬─────────┘        └─────────┬─────────┘
+                     ┌─────────────────┐          ┌──────────────────┐
+                     │  Client Portal  │          │   Driver App     │
+                     │     :8080       │          │     :8081        │
+                     └────────┬────────┘          └─────────┬────────┘
                               │            HTTP + WebSocket │
-                              └──────────────┬───────────────┘
-                                              ▼
+                              └──────────────┬──────────────┘
+                                             ▼
                                    ┌─────────────────────┐
-                                   │    API Gateway       │
-                                   │       :3000          │
-                                   │  REST↔SOAP / REST↔TCP│
-                                   │  Saga Coordinator     │
-                                   │  WebSocket Dispatch   │
-                                   └───┬───────┬───────┬───┘
+                                   │    API Gateway:3000 │
+                                   │ REST↔SOAP/REST↔TCP  │
+                                   │  Saga Coordinator   │
+                                   │  WebSocket Dispatch │
+                                   └───┬───────┬───────┬─┘
                         SOAP/XML       │       │       │   TCP (:9000)
                     ┌──────────────────┘       │       └──────────────────┐
                     ▼                          │ REST                     ▼
           ┌──────────────────┐                 ▼                ┌──────────────────┐
-          │   CMS Service     │        ┌──────────────────┐      │   WMS Service      │
-          │      :8001        │        │   ROS Service      │      │  REST :8003        │
-          │  Flask + Spyne     │        │      :8002        │      │  TCP  :9000        │
-          └─────────┬──────────┘        │  Node.js Express   │      └─────────┬──────────┘
-                    │                    └─────────┬──────────┘                │
-                    └──────────────┬────────────────┴───────────────┬─────────┘
-                                    ▼          publish/subscribe     ▼
+          │   CMS Service    │        ┌──────────────────┐      │   WMS Service    │
+          │      :8001       │        │   ROS Service    │      │  REST :8003      │
+          │  Flask + Spyne   │        │      :8002       │      │  TCP  :9000      │
+          └─────────┬────────┘        │  Node.js Express │      └─────────┬────────┘
+                    │                 └─────────┬────────┘                │
+                    └──────────────┬────────────┴───────────────────┬─────┘
+                                   ▼          publish/subscribe     ▼
                           ┌───────────────────────────────────────────┐
-                          │              RabbitMQ (:5672)              │
-                          │           exchange: order_events           │
+                          │              RabbitMQ (:5672)             │
+                          │           exchange: order_events          │
                           └───────────────────────────────────────────┘
                                               │
                                               ▼
                                    ┌─────────────────────┐
-                                   │     PostgreSQL        │
-                                   │        :5432          │
+                                   │     PostgreSQL      │
+                                   │        :5432        │
                                    └─────────────────────┘
 ```
 
@@ -160,9 +159,6 @@ docker compose up --build
 | 6 | Integration & load testing | All |  Not started |
 | 7 | Documentation & screencast | All |  Not started |
 
-_Group of 6 - SCS3208, University of Colombo School of Computing._
-_Index numbers of contributing members are listed in the solution
-documentation per assignment submission guidelines._
 
 ## 8. Documentation
 
