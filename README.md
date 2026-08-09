@@ -96,6 +96,9 @@ Middleware-Architecture-for-SwiftLogistics-/
 - Node.js 20+ (for local, non-container development)
 - Git
 
+Set up Docker. \
+See [`DOCKER-SETUP.md`](./DOCKER-SETUP.md) for full install instructions (Windows + Ubuntu) and troubleshooting.
+
 ### Run infrastructure + gateway
 
 ```bash
@@ -162,6 +165,7 @@ docker compose up --build
 
 ## 8. Documentation
 
+- [`DOCKER-SETUP.md`](./DOCKER-SETUP.md) - Docker install + troubleshooting guide (Windows/Ubuntu)
 - [`system-plan.md`](./system-plan.md) - phase-by-phase implementation plan
 - [`implementation_plan.md`](./implementation_plan.md)
 - [`task-list.md`](./task-list.md)
