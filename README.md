@@ -97,7 +97,7 @@ Middleware-Architecture-for-SwiftLogistics-/
 - Git
 
 Set up Docker. \
-See [`DOCKER-SETUP.md`](./DOCKER-SETUP.md) for full install instructions (Windows + Ubuntu) and troubleshooting.
+See [`DOCKER-SETUP.md`](./plans/DOCKER-SETUP.md) for full install instructions (Windows + Ubuntu) and troubleshooting.
 
 ### Run infrastructure + gateway
 
@@ -165,9 +165,9 @@ docker compose up --build
 
 ## 8. Documentation
 
-- [`DOCKER-SETUP.md`](./DOCKER-SETUP.md) - Docker install + troubleshooting guide (Windows/Ubuntu)
-- [`system-plan.md`](./system-plan.md) - phase-by-phase implementation plan
-- [`implementation_plan.md`](./implementation_plan.md)
-- [`task-list.md`](./task-list.md)
-- [`work-distribution.md`](./work-distribution.md)
-- [`MA-Assignment-4-2026.pdf`](./MA-Assignment-4-2026.pdf) - original brief
+- [`DOCKER-SETUP.md`](./plans/DOCKER-SETUP.md) - Docker install + troubleshooting guide (Windows/Ubuntu)
+- [`system-plan.md`](./plans/system-plan.md) - phase-by-phase implementation plan
+- [`implementation_plan.md`](./plans/implementation_plan.md)
+- [`task-list.md`](./plans/task-list.md)
+- [`work-distribution.md`](./plans/work-distribution.md)
+- [`MA-Assignment-4-2026.pdf`](./plans/MA-Assignment-4-2026.pdf) - original brief
