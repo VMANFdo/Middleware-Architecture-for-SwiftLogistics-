@@ -2,7 +2,7 @@
 
 How to install Docker and run this project's Phase 1 stack (Postgres,
 RabbitMQ, API Gateway) on **Windows** or **Ubuntu**.\
-See [`README.md`](./README.md) for the overall architecture; this file is just
+See [`README.md`](../README.md) for the overall architecture; this file is just
 the "get it running on your machine" guide.
 
 ---
