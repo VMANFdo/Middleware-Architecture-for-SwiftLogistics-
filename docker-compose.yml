@@ -116,7 +116,7 @@ services:
     container_name: swift-gateway
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${API_GATEWAY_HOST_PORT:-3000}:3000"
     environment:
       DATABASE_URL: postgresql://swift_admin:swift_pw_dev_only@postgres:5432/swifttrack
       RABBITMQ_URL: amqp://swift_admin:swift_pw_dev_only@rabbitmq:5672

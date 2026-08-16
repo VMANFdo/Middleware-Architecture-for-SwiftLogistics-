@@ -103,7 +103,7 @@ function optimiseStops(driverCode, stops) {
   return ordered;
 }
 
-async function publishRouteUpdated(route) {
+async function publishRouteProcessingComplete(route) {
   if (!rabbitChannel) {
     return;
   }
@@ -113,7 +113,7 @@ async function publishRouteUpdated(route) {
     ROUTE_EXCHANGE,
     '',
     Buffer.from(JSON.stringify({
-      event_type: 'ROUTE_UPDATED',
+      event_type: 'ROS_PROCESSING_COMPLETE',
       timestamp: new Date().toISOString(),
       data: route,
     })),
@@ -143,7 +143,7 @@ async function addOrderToRoute(order) {
 
   route.stops = optimiseStops(driverCode, route.stops);
   route.updated_at = new Date().toISOString();
-  await publishRouteUpdated(route);
+  await publishRouteProcessingComplete(route);
   return route;
 }
 
@@ -179,6 +179,10 @@ app.post('/api/routes/optimize', (req, res) => {
   });
 });
 
+app.get('/api/routes', (req, res) => {
+  res.json(Array.from(routes.values()));
+});
+
 app.get('/api/routes/driver/:driverCode/today', (req, res) => {
   const route = getOrCreateRoute(req.params.driverCode);
   res.json(route);
@@ -197,7 +201,7 @@ app.put('/api/routes/:routeId/stops/:orderCode', async (req, res) => {
 
   stop.status = req.body.status || stop.status;
   route.updated_at = new Date().toISOString();
-  await publishRouteUpdated(route);
+  await publishRouteProcessingComplete(route);
   return res.json({ success: true, route });
 });
 

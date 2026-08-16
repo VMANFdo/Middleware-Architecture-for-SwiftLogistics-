@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import bcrypt
 import pika
 import psycopg2
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from spyne import Application, Float, ServiceBase, Unicode, rpc
 from spyne.protocol.soap import Soap11
 from spyne.server.wsgi import WsgiApplication
@@ -29,6 +29,65 @@ flask_app = Flask("cms-service")
 @flask_app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok", "service": "cms-service"})
+
+
+@flask_app.route("/api/clients/auth", methods=["POST"])
+def rest_authenticate_client():
+    payload = request.get_json(silent=True) or {}
+    result = authenticate_client_payload(
+        payload.get("email", ""),
+        payload.get("password", ""),
+    )
+    return jsonify(result), 200 if result.get("success") else 401
+
+
+@flask_app.route("/api/orders", methods=["POST"])
+def rest_create_order():
+    payload = request.get_json(silent=True) or {}
+    result = create_order_payload(
+        payload.get("client_code", ""),
+        payload.get("pickup_address", ""),
+        payload.get("delivery_address", ""),
+        float(payload.get("weight_kg", 0) or 0),
+    )
+    return jsonify(result), 201 if result.get("success") else 400
+
+
+@flask_app.route("/api/orders/<client_code>", methods=["GET"])
+def rest_client_orders(client_code):
+    result = get_client_orders_payload(client_code)
+    return jsonify(result), 200 if result.get("success") else 400
+
+
+@flask_app.route("/api/orders/status/<order_code>", methods=["GET"])
+def rest_order_status(order_code):
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT o.order_code, o.status, o.created_at, o.updated_at
+                    FROM orders o
+                    WHERE o.order_code = %s
+                    """,
+                    (order_code,),
+                )
+                row = cur.fetchone()
+
+        if row is None:
+            return jsonify({"success": False, "message": "Order not found"}), 404
+
+        return jsonify(
+            {
+                "success": True,
+                "order_code": row[0],
+                "status": row[1],
+                "created_at": row[2].isoformat(),
+                "updated_at": row[3].isoformat(),
+            }
+        )
+    except Exception as error:
+        return jsonify({"success": False, "message": str(error)}), 500
 
 
 def get_db_connection():
@@ -75,6 +134,169 @@ def publish_order_created(event_payload):
     connection.close()
 
 
+def authenticate_client_payload(email, password):
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT client_code, company_name, email, password_hash
+                    FROM clients
+                    WHERE email = %s
+                    """,
+                    (email,),
+                )
+                row = cur.fetchone()
+
+        if row is None:
+            return {"success": False, "message": "Client not found"}
+
+        client_code, company_name, client_email, password_hash = row
+        password_ok = bcrypt.checkpw(
+            password.encode("utf-8"),
+            password_hash.encode("utf-8"),
+        )
+
+        if not password_ok:
+            return {"success": False, "message": "Invalid password"}
+
+        return {
+            "success": True,
+            "client_code": client_code,
+            "company_name": company_name,
+            "email": client_email,
+        }
+
+    except Exception as error:
+        return {"success": False, "message": str(error)}
+
+
+def create_order_payload(client_code, pickup_address, delivery_address, weight_kg):
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id FROM clients WHERE client_code = %s",
+                    (client_code,),
+                )
+                client_row = cur.fetchone()
+
+                if client_row is None:
+                    return {"success": False, "message": "Client not found"}
+
+                client_id = client_row[0]
+
+                cur.execute(
+                    """
+                    SELECT COALESCE(
+                        MAX(CAST(SUBSTRING(order_code FROM 5) AS INTEGER)),
+                        0
+                    ) + 1
+                    FROM orders
+                    WHERE order_code LIKE 'ORD-%'
+                    """
+                )
+                next_number = cur.fetchone()[0]
+                order_code = f"ORD-{next_number:04d}"
+
+                cur.execute(
+                    """
+                    INSERT INTO orders (
+                        order_code,
+                        client_id,
+                        pickup_address,
+                        delivery_address,
+                        weight_kg,
+                        status
+                    )
+                    VALUES (%s, %s, %s, %s, %s, 'pending')
+                    RETURNING order_code, status, created_at
+                    """,
+                    (
+                        order_code,
+                        client_id,
+                        pickup_address,
+                        delivery_address,
+                        weight_kg,
+                    ),
+                )
+                created_order = cur.fetchone()
+
+        pickup_lat, pickup_lng = estimate_coordinates(pickup_address)
+        delivery_lat, delivery_lng = estimate_coordinates(delivery_address)
+        event_payload = {
+            "event_type": "ORDER_CREATED",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "data": {
+                "order_code": order_code,
+                "client_code": client_code,
+                "pickup_address": pickup_address,
+                "delivery_address": delivery_address,
+                "pickup_lat": pickup_lat,
+                "pickup_lng": pickup_lng,
+                "delivery_lat": delivery_lat,
+                "delivery_lng": delivery_lng,
+                "weight_kg": float(weight_kg),
+                "status": created_order[1],
+            },
+        }
+        publish_order_created(event_payload)
+
+        return {
+            "success": True,
+            "order_code": created_order[0],
+            "client_code": client_code,
+            "pickup_address": pickup_address,
+            "delivery_address": delivery_address,
+            "weight_kg": float(weight_kg),
+            "status": created_order[1],
+            "created_at": created_order[2].isoformat(),
+            "event_published": True,
+        }
+
+    except Exception as error:
+        return {"success": False, "message": str(error)}
+
+
+def get_client_orders_payload(client_code):
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT o.order_code,
+                           o.pickup_address,
+                           o.delivery_address,
+                           o.weight_kg,
+                           o.status,
+                           o.created_at
+                    FROM orders o
+                    JOIN clients c ON c.id = o.client_id
+                    WHERE c.client_code = %s
+                    ORDER BY o.created_at DESC
+                    """,
+                    (client_code,),
+                )
+                rows = cur.fetchall()
+
+        orders = [
+            {
+                "order_code": row[0],
+                "pickup_address": row[1],
+                "delivery_address": row[2],
+                "weight_kg": float(row[3]) if row[3] is not None else None,
+                "status": row[4],
+                "created_at": row[5].isoformat(),
+            }
+            for row in rows
+        ]
+
+        return {"success": True, "client_code": client_code, "orders": orders}
+
+    except Exception as error:
+        return {"success": False, "message": str(error)}
+
+
 class CMSService(ServiceBase):
     @rpc(_returns=Unicode)
     def ping(ctx):
@@ -82,174 +304,22 @@ class CMSService(ServiceBase):
 
     @rpc(Unicode, Unicode, _returns=Unicode)
     def authenticate_client(ctx, email, password):
-        try:
-            with get_db_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        """
-                        SELECT client_code, company_name, email, password_hash
-                        FROM clients
-                        WHERE email = %s
-                        """,
-                        (email,),
-                    )
-                    row = cur.fetchone()
-
-            if row is None:
-                return json.dumps({"success": False, "message": "Client not found"})
-
-            client_code, company_name, client_email, password_hash = row
-            password_ok = bcrypt.checkpw(
-                password.encode("utf-8"),
-                password_hash.encode("utf-8"),
-            )
-
-            if not password_ok:
-                return json.dumps({"success": False, "message": "Invalid password"})
-
-            return json.dumps(
-                {
-                    "success": True,
-                    "client_code": client_code,
-                    "company_name": company_name,
-                    "email": client_email,
-                }
-            )
-
-        except Exception as error:
-            return json.dumps({"success": False, "message": str(error)})
+        return json.dumps(authenticate_client_payload(email, password))
 
     @rpc(Unicode, Unicode, Unicode, Float, _returns=Unicode)
     def create_order(ctx, client_code, pickup_address, delivery_address, weight_kg):
-        try:
-            with get_db_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "SELECT id FROM clients WHERE client_code = %s",
-                        (client_code,),
-                    )
-                    client_row = cur.fetchone()
-
-                    if client_row is None:
-                        return json.dumps(
-                            {"success": False, "message": "Client not found"}
-                        )
-
-                    client_id = client_row[0]
-
-                    cur.execute(
-                        """
-                        SELECT COALESCE(
-                            MAX(CAST(SUBSTRING(order_code FROM 5) AS INTEGER)),
-                            0
-                        ) + 1
-                        FROM orders
-                        WHERE order_code LIKE 'ORD-%'
-                        """
-                    )
-                    next_number = cur.fetchone()[0]
-                    order_code = f"ORD-{next_number:04d}"
-
-                    cur.execute(
-                        """
-                        INSERT INTO orders (
-                            order_code,
-                            client_id,
-                            pickup_address,
-                            delivery_address,
-                            weight_kg,
-                            status
-                        )
-                        VALUES (%s, %s, %s, %s, %s, 'pending')
-                        RETURNING order_code, status, created_at
-                        """,
-                        (
-                            order_code,
-                            client_id,
-                            pickup_address,
-                            delivery_address,
-                            weight_kg,
-                        ),
-                    )
-                    created_order = cur.fetchone()
-
-            pickup_lat, pickup_lng = estimate_coordinates(pickup_address)
-            delivery_lat, delivery_lng = estimate_coordinates(delivery_address)
-            event_payload = {
-                "event_type": "ORDER_CREATED",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "data": {
-                    "order_code": order_code,
-                    "client_code": client_code,
-                    "pickup_address": pickup_address,
-                    "delivery_address": delivery_address,
-                    "pickup_lat": pickup_lat,
-                    "pickup_lng": pickup_lng,
-                    "delivery_lat": delivery_lat,
-                    "delivery_lng": delivery_lng,
-                    "weight_kg": float(weight_kg),
-                    "status": created_order[1],
-                },
-            }
-            publish_order_created(event_payload)
-
-            return json.dumps(
-                {
-                    "success": True,
-                    "order_code": created_order[0],
-                    "client_code": client_code,
-                    "pickup_address": pickup_address,
-                    "delivery_address": delivery_address,
-                    "weight_kg": float(weight_kg),
-                    "status": created_order[1],
-                    "created_at": created_order[2].isoformat(),
-                    "event_published": True,
-                }
+        return json.dumps(
+            create_order_payload(
+                client_code,
+                pickup_address,
+                delivery_address,
+                weight_kg,
             )
-
-        except Exception as error:
-            return json.dumps({"success": False, "message": str(error)})
+        )
 
     @rpc(Unicode, _returns=Unicode)
     def get_client_orders(ctx, client_code):
-        try:
-            with get_db_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        """
-                        SELECT o.order_code,
-                               o.pickup_address,
-                               o.delivery_address,
-                               o.weight_kg,
-                               o.status,
-                               o.created_at
-                        FROM orders o
-                        JOIN clients c ON c.id = o.client_id
-                        WHERE c.client_code = %s
-                        ORDER BY o.created_at DESC
-                        """,
-                        (client_code,),
-                    )
-                    rows = cur.fetchall()
-
-            orders = [
-                {
-                    "order_code": row[0],
-                    "pickup_address": row[1],
-                    "delivery_address": row[2],
-                    "weight_kg": float(row[3]) if row[3] is not None else None,
-                    "status": row[4],
-                    "created_at": row[5].isoformat(),
-                }
-                for row in rows
-            ]
-
-            return json.dumps(
-                {"success": True, "client_code": client_code, "orders": orders}
-            )
-
-        except Exception as error:
-            return json.dumps({"success": False, "message": str(error)})
+        return json.dumps(get_client_orders_payload(client_code))
 
 
 soap_app = Application(
