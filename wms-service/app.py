@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 import pika
 import psycopg2
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 
 
 DATABASE_URL = os.getenv(
@@ -39,12 +39,12 @@ def json_response(success, **kwargs):
 
 
 def assign_location(order_code):
-    zones = ["Zone A", "Zone B", "Zone C"]
+    zones = ["A", "B", "C", "D"]
     seed = sum(ord(ch) for ch in order_code)
     zone = zones[seed % len(zones)]
-    shelf = (seed % 6) + 1
-    bin_number = (seed % 30) + 1
-    return zone, f"{zone[-1]}{shelf}-{bin_number:02d}"
+    rack = (seed % 5) + 1
+    shelf = (seed % 3) + 1
+    return f"Zone {zone}", f"{zone}{rack}-{shelf}"
 
 
 def register_package(order_code):
@@ -215,6 +215,44 @@ def update_package_status(order_code=None, barcode=None, status=None):
     }
 
 
+def update_package_status_by_id(package_id, status):
+    if status not in ALLOWED_STATUSES:
+        return {
+            "success": False,
+            "message": f"Invalid status. Use one of: {sorted(ALLOWED_STATUSES)}",
+        }
+
+    with get_db_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE packages p
+                SET status = %s,
+                    warehouse_event_at = now()
+                FROM orders o
+                WHERE p.order_id = o.id
+                  AND p.id = %s
+                RETURNING p.id, o.order_code, p.barcode,
+                          p.warehouse_zone, p.bin_location, p.status
+                """,
+                (status, package_id),
+            )
+            row = cur.fetchone()
+
+    if row is None:
+        return {"success": False, "message": "Package not found"}
+
+    return {
+        "success": True,
+        "package_id": str(row[0]),
+        "order_code": row[1],
+        "barcode": row[2],
+        "warehouse_zone": row[3],
+        "bin_location": row[4],
+        "status": row[5],
+    }
+
+
 def handle_tcp_command(command):
     command_type = command.get("type") or command.get("command")
 
@@ -290,7 +328,7 @@ def publish_wms_event(package_payload):
         routing_key="",
         body=json.dumps(
             {
-                "event_type": "WMS_PACKAGE_REGISTERED",
+                "event_type": "WMS_PROCESSING_COMPLETE",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "data": package_payload,
             }
@@ -357,6 +395,37 @@ def package_by_order(order_code):
     package = get_package(order_code=order_code)
     status = 200 if package.get("success") else 404
     return jsonify(package), status
+
+
+@app.route("/api/packages", methods=["POST"])
+def create_package():
+    payload = request.get_json(silent=True) or {}
+    package = register_package(payload.get("order_code"))
+    status = 201 if package.get("success") else 400
+    return jsonify(package), status
+
+
+@app.route("/api/packages/<package_id>/status", methods=["PUT"])
+def package_status_by_id(package_id):
+    payload = request.get_json(silent=True) or {}
+    package = update_package_status_by_id(package_id, payload.get("status"))
+    status = 200 if package.get("success") else 400
+    return jsonify(package), status
+
+
+@app.route("/api/warehouse/locations", methods=["GET"])
+def warehouse_locations():
+    locations = [
+        {
+            "warehouse_zone": f"Zone {zone}",
+            "bin_location": f"{zone}{rack}-{shelf}",
+            "available": True,
+        }
+        for zone in ["A", "B", "C", "D"]
+        for rack in range(1, 6)
+        for shelf in range(1, 4)
+    ]
+    return jsonify({"success": True, "locations": locations})
 
 
 if __name__ == "__main__":
