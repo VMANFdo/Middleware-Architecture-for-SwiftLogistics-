@@ -90,6 +90,73 @@ def rest_order_status(order_code):
         return jsonify({"success": False, "message": str(error)}), 500
 
 
+@flask_app.route("/api/deliveries/<order_code>", methods=["POST"])
+def rest_record_delivery(order_code):
+    payload = request.get_json(silent=True) or {}
+    delivery_status = payload.get("status")
+    driver_code = payload.get("driver_code")
+    recipient_name = (payload.get("recipient_name") or "").strip()
+    failure_reason = payload.get("reason")
+    signature_base64 = payload.get("signature")
+    notes = payload.get("notes")
+
+    if delivery_status not in {"delivered", "failed"}:
+        return jsonify({"success": False, "message": "Status must be delivered or failed"}), 400
+    if not driver_code:
+        return jsonify({"success": False, "message": "Driver code is required"}), 400
+    if delivery_status == "delivered" and (not recipient_name or not signature_base64):
+        return jsonify({"success": False, "message": "Recipient name and signature are required"}), 400
+    if delivery_status == "failed" and not failure_reason:
+        return jsonify({"success": False, "message": "Failure reason is required"}), 400
+
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id FROM orders WHERE order_code = %s", (order_code,))
+                order_row = cur.fetchone()
+                cur.execute("SELECT id FROM drivers WHERE driver_code = %s", (driver_code,))
+                driver_row = cur.fetchone()
+
+                if order_row is None:
+                    return jsonify({"success": False, "message": "Order not found"}), 404
+                if driver_row is None:
+                    return jsonify({"success": False, "message": "Driver not found"}), 404
+
+                cur.execute(
+                    "UPDATE orders SET status = %s WHERE id = %s",
+                    (delivery_status, order_row[0]),
+                )
+                cur.execute(
+                    """
+                    INSERT INTO delivery_proofs (
+                        order_id, driver_id, delivery_status, failure_reason,
+                        recipient_name, notes, signature_base64
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id, captured_at
+                    """,
+                    (
+                        order_row[0], driver_row[0], delivery_status,
+                        failure_reason, recipient_name or None, notes,
+                        signature_base64,
+                    ),
+                )
+                proof_id, captured_at = cur.fetchone()
+
+        return jsonify(
+            {
+                "success": True,
+                "order_code": order_code,
+                "driver_code": driver_code,
+                "status": delivery_status,
+                "proof_id": str(proof_id),
+                "captured_at": captured_at.isoformat(),
+            }
+        ), 201
+    except Exception as error:
+        return jsonify({"success": False, "message": str(error)}), 500
+
+
 def get_db_connection():
     return psycopg2.connect(DATABASE_URL)
 

@@ -17,7 +17,7 @@ description: >
 
 **Client:** SwiftLogistics (Pvt) Ltd. — a Sri Lanka last-mile delivery company.
 
-**Goal:** Build a middleware layer called **SwiftTrack** that integrates three siloed legacy systems into a unified prototype. The frontend consists of a **Client Web Portal** and a **Driver Mobile App**.
+**Goal:** Build a middleware layer called **SwiftTrack** that integrates three siloed legacy systems into a unified prototype. The frontend consists of a **Client Web Portal** and a responsive **Driver Web Portal**.
 
 **This is a prototype, not production.** Keep implementations minimal but functional. The assignment explicitly says "minimal implementation that mocks" — do not over-engineer.
 
@@ -52,7 +52,7 @@ description: >
                               ┌────────────────────────────┤
                               ↓                            ↓
                      ┌────────────────┐         ┌──────────────────┐
-                     │ Client Portal  │         │   Driver App     │
+                     │ Client Portal  │         │ Driver Web Portal│
                      │  :8080 (Nginx) │         │  :8081 (Nginx)   │
                      └────────────────┘         └──────────────────┘
 ```
@@ -448,10 +448,10 @@ EXPOSE 80
 
 ---
 
-### Member 6: Driver App + DB + Docker
+### Member 6: Driver Web Portal + DB + Docker
 - **DB:** Write `database/init.sql` (schema above + seed data)
 - **Docker Compose:** Wire all 7 services on `swift-network`. Set `depends_on` with health checks for postgres and rabbitmq
-- **Driver App:** `driver-app/index.html`, `driver-app/app.js`, `driver-app/styles.css`, `driver-app/nginx.conf`, `driver-app/Dockerfile`
+- **Driver Web Portal:** `driver-app/index.html`, `driver-app/app.js`, `driver-app/styles.css`, `driver-app/nginx.conf`, `driver-app/Dockerfile`
   - Login: POST `/api/auth/driver/login`
   - Route manifest: GET `/api/driver/route/today`
   - Delivery complete: Canvas signature (`toDataURL()`), POST `/api/driver/delivery/:orderId` with `{status:'delivered', recipient_name, signature}`
@@ -508,7 +508,7 @@ Each status change triggers:
 | Service | HTTP Port | Other |
 |---------|-----------|-------|
 | Client Portal | 8080 | — |
-| Driver App | 8081 | — |
+| Driver Web Portal | 8081 | — |
 | API Gateway | 3000 | WS: 3000 |
 | CMS Service | 8001 | SOAP: /soap |
 | ROS Service | 8002 | — |
@@ -524,7 +524,7 @@ Each status change triggers:
 |-----|-------|----------|
 | Client Portal | techmart@example.com | password123 |
 | Client Portal | fashionhub@example.com | password123 |
-| Driver App | kasun@swiftlogistics.lk | password123 |
-| Driver App | nimal@swiftlogistics.lk | password123 |
+| Driver Web Portal | kasun@swiftlogistics.lk | password123 |
+| Driver Web Portal | nimal@swiftlogistics.lk | password123 |
 | RabbitMQ UI | swift | logistics123 |
 | PostgreSQL | swift | logistics123 |

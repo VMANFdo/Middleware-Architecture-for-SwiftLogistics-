@@ -16,13 +16,13 @@
 ## Phase 3: Middleware Integration & Gateway Logic (Days 11–15)
 - [ ] Implement Gateway REST-to-SOAP translation adapter logic for CMS - **Member 4**
 - [ ] Implement Gateway REST-to-TCP socket bridge logic (Port 9000 client connection) for WMS - **Member 4**
-- [ ] Implement Gateway JWT Token authentication and authorization middleware - **Member 4**
+- [x] Implement Gateway JWT Token authentication and authorization middleware - **Member 4**
 
 ## Phase 4: Frontend Development (Days 16–20)
 - [x] Design and code Client Web Portal UI (Dashboard & Orders intake panel) - **Member 5**
 - [x] Setup Nginx server configuration for Client Portal resource routing - **Member 5**
-- [ ] Develop Driver Mobile App manifest stop list view - **Member 6**
-- [ ] Write HTML Canvas script to capture handwritten signature PODs - **Member 6**
+- [x] Develop responsive Driver Web Portal manifest stop list view - **Member 6**
+- [x] Write HTML Canvas script to capture handwritten signature PODs - **Member 6**
 
 ## Phase 5: Saga Transaction Coordinator & WebSockets (Days 21–24)
 - [ ] Program Gateway WebSocket server logic to manage active client/driver communication maps - **Member 4**

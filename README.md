@@ -22,7 +22,7 @@ even if a backend system is temporarily down.
 
 ```
                      ┌─────────────────┐          ┌──────────────────┐
-                     │  Client Portal  │          │   Driver App     │
+                     │  Client Portal  │          │  Driver Portal   │
                      │     :8080       │          │     :8081        │
                      └────────┬────────┘          └─────────┬────────┘
                               │            HTTP + WebSocket │
@@ -79,7 +79,7 @@ Middleware-Architecture-for-SwiftLogistics-/
 ├── ros-service/                 # Route optimiser, Node Express (Phase 2 - M2)
 ├── wms-service/                 # TCP socket server, Flask (Phase 2 - M3)
 ├── client-portal/                # Web dashboard (Phase 4 - M5)
-├── driver-app/                  # Driver mobile UI (Phase 4 - M6)
+├── driver-app/                  # Responsive Driver Web Portal (Phase 4 - M6)
 │
 ├── docker-compose.yml           # Orchestrates all 7 services
 ├── MA-Assignment-4-2026.pdf     # Original assignment brief
@@ -127,12 +127,7 @@ If ports 3000 or 8080 are already in use, copy `.env.example` to `.env`
 before starting. Its host-port overrides do not affect communication between
 containers.
 
-The Driver App is intentionally kept in the optional `driver-app` profile
-until its implementation lands. Include it later with:
-
-```bash
-docker compose --profile driver-app up --build
-```
+The same command also starts the responsive Driver Web Portal.
 
 ## 5. Service Port Map
 
@@ -145,7 +140,7 @@ docker compose --profile driver-app up --build
 | 8002 | ROS Service | REST |
 | 8003 / 9000 | WMS Service (REST / proprietary TCP) | REST / TCP |
 | 8080 | Client Portal | HTTP |
-| 8081 | Driver App | HTTP |
+| 8081 | Driver Web Portal | HTTP |
 
 ## 6. Technology Stack
 
@@ -167,7 +162,7 @@ docker compose --profile driver-app up --build
 | 1 | DB schema, Docker Compose, Gateway scaffold | - |  Complete |
 | 2 | CMS / ROS / WMS mock services | M1 / M2 / M3 |  Not started |
 | 3 | Gateway protocol bridging (SOAP, TCP) | M4 |  Not started |
-| 4 | Frontend (Client Portal, Driver App) | M5 / M6 |  Not started |
+| 4 | Frontend (Client Portal, Driver Web Portal) | M5 / M6 |  Complete |
 | 5 | Saga coordinator, WebSocket dispatch | M4 |  Not started |
 | 6 | Integration & load testing | All |  Not started |
 | 7 | Documentation & screencast | All |  Not started |

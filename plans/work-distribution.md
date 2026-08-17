@@ -13,7 +13,7 @@ graph TD
     M3[Member 3: WMS TCP/REST] <-->|TCP/REST| M4
     M2[Member 2: ROS REST] <-->|REST| M4
     M4 <-->|WebSockets| M5[Member 5: Client Portal]
-    M4 <-->|WebSockets| M6[Member 6: Driver App]
+    M4 <-->|WebSockets| M6[Member 6: Driver Web Portal]
     M1 -.->|Publish Event| MQ[(RabbitMQ)]
     MQ -.->|Consume Event| M2
     MQ -.->|Consume Event| M3
@@ -58,7 +58,7 @@ graph TD
     *   **Overlaps with:**
         *   **Member 1:** Must match the coordinate fields (`pickup_lat`, `pickup_lng`, `delivery_lat`, `delivery_lng`) sent in the `ORDER_CREATED` event.
         *   **Member 4:** The gateway needs to forward driver requests to your route endpoints.
-        *   **Member 6 (Driver App):** Must coordinate on the format of the manifest JSON (stops, coordinates, ETA times).
+        *   **Member 6 (Driver Web Portal):** Must coordinate on the format of the manifest JSON (stops, coordinates, ETA times).
 
 ---
 
@@ -122,15 +122,15 @@ graph TD
 
 ---
 
-### Member 6: Driver App, DB Setup, and Docker Orchestration
-*   **Technologies:** Docker, Docker Compose, PostgreSQL (SQL), HTML/CSS/JS (mobile layout), Nginx.
+### Member 6: Driver Web Portal, DB Setup, and Docker Orchestration
+*   **Technologies:** Docker, Docker Compose, PostgreSQL (SQL), responsive HTML/CSS/JS, Nginx.
 *   **What you must implement:**
     *   **Database Schema (`database/init.sql`):**
         *   Write PostgreSQL table definitions (`clients`, `drivers`, `orders`, `packages`, `routes`, `route_stops`, `transaction_logs`).
         *   Provide seed insert queries with demo accounts (hashed passwords using standard bcrypt).
     *   **Dockerization:**
         *   Write root `docker-compose.yml` defining networks, environment variables, healthchecks, and mounts.
-    *   **Driver Mobile App Frontend:**
+    *   **Driver Web Portal Frontend:**
         *   Mobile-first design (single column, clean lists).
         *   Dashboard displaying assigned stops with coordinates.
         *   "Complete Delivery" window: HTML canvas signature pad capturing handwriting, converting it to base64, and POSTing to gateway.
@@ -182,7 +182,7 @@ When Member 4 (Gateway) talks to Member 3 (WMS) over TCP (Port 9000), they commu
     ```
 
 ### Overlap C: WebSocket Event Schemas
-Websocket messages broadcasted from Gateway to Client Portal / Driver App:
+Websocket messages broadcasted from Gateway to Client Portal / Driver Web Portal:
 
 ```json
 {

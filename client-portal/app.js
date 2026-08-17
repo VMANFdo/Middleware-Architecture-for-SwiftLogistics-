@@ -14,6 +14,10 @@ function normaliseStatus(value) { return String(value || 'pending').toLowerCase(
 async function api(path, options = {}) {
   const response = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', ...authHeaders(), ...options.headers } });
   const payload = await response.json().catch(() => ({}));
+  if (response.status === 401 && path !== '/api/auth/client/login') {
+    logout();
+    showToast('Your session has expired. Please sign in again.', 'error');
+  }
   if (!response.ok) throw new Error(payload.message || payload.detail || payload.error || 'Request failed');
   return payload;
 }

@@ -17,16 +17,16 @@ const pool = new Pool({ connectionString: DATABASE_URL });
 const vehicles = [
   {
     driver_code: 'DRV001',
-    name: 'Kasun Jayasuriya',
-    vehicle_id: 'WP-CAB-4521',
+    name: 'Kasun Perera',
+    vehicle_id: 'WP-KA-1234',
     capacity_kg: 100,
     start_lat: 6.9271,
     start_lng: 79.8612,
   },
   {
     driver_code: 'DRV002',
-    name: 'Ishara Wickramasinghe',
-    vehicle_id: 'WP-CAB-7789',
+    name: 'Nimal Silva',
+    vehicle_id: 'WP-NB-5678',
     capacity_kg: 80,
     start_lat: 7.2906,
     start_lng: 80.6337,
@@ -101,10 +101,23 @@ function optimiseStops(driverCode, stops) {
       ...nextStop,
       sequence: ordered.length + 1,
       distance_from_previous_km: Number(bestDistance.toFixed(2)),
+      estimated_arrival: new Date(
+        `${todayKey()}T08:00:00.000Z`,
+      ).getTime() + (ordered.length * 30 * 60 * 1000),
     });
   }
 
-  return ordered;
+  return ordered.map((stop) => ({
+    ...stop,
+    estimated_arrival: new Date(stop.estimated_arrival).toISOString(),
+  }));
+}
+
+function databaseStopStatus(status) {
+  if (['delivered', 'completed'].includes(status)) return 'completed';
+  if (['failed', 'skipped'].includes(status)) return 'skipped';
+  if (status === 'arrived') return 'arrived';
+  return 'pending';
 }
 
 // ---------------------------------------------------------------------
@@ -145,9 +158,17 @@ async function upsertRouteStopRow(routeDbId, orderId, stop) {
   if (existing.rows.length > 0) {
     await pool.query(
       `UPDATE route_stops
-       SET sequence_index = $1, latitude = $2, longitude = $3
-       WHERE id = $4`,
-      [stop.sequence, stop.delivery_lat, stop.delivery_lng, existing.rows[0].id],
+       SET sequence_index = $1, latitude = $2, longitude = $3,
+           eta = $4, stop_status = $5
+       WHERE id = $6`,
+      [
+        stop.sequence,
+        stop.delivery_lat,
+        stop.delivery_lng,
+        stop.estimated_arrival,
+        databaseStopStatus(stop.status),
+        existing.rows[0].id,
+      ],
     );
     return;
   }
@@ -158,9 +179,9 @@ async function upsertRouteStopRow(routeDbId, orderId, stop) {
   // whole persistence pass over one collision.
   try {
     await pool.query(
-      `INSERT INTO route_stops (route_id, order_id, sequence_index, latitude, longitude, stop_status)
-       VALUES ($1, $2, $3, $4, $5, 'pending')`,
-      [routeDbId, orderId, stop.sequence, stop.delivery_lat, stop.delivery_lng],
+      `INSERT INTO route_stops (route_id, order_id, sequence_index, latitude, longitude, eta, stop_status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [routeDbId, orderId, stop.sequence, stop.delivery_lat, stop.delivery_lng, stop.estimated_arrival, databaseStopStatus(stop.status)],
     );
   } catch (error) {
     if (error.code === '23505') {
@@ -170,9 +191,9 @@ async function upsertRouteStopRow(routeDbId, orderId, stop) {
         [stop.sequence, routeDbId, orderId],
       );
       await pool.query(
-        `INSERT INTO route_stops (route_id, order_id, sequence_index, latitude, longitude, stop_status)
-         VALUES ($1, $2, $3, $4, $5, 'pending')`,
-        [routeDbId, orderId, stop.sequence, stop.delivery_lat, stop.delivery_lng],
+        `INSERT INTO route_stops (route_id, order_id, sequence_index, latitude, longitude, eta, stop_status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [routeDbId, orderId, stop.sequence, stop.delivery_lat, stop.delivery_lng, stop.estimated_arrival, databaseStopStatus(stop.status)],
       );
     } else {
       throw error;

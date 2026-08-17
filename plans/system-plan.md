@@ -15,7 +15,7 @@ Phase 2: Build Mocks — CMS (M1), ROS (M2), WMS (M3)
 Phase 3: Gateway Protocol Bridging — HTTP/SOAP/TCP (M4 + M1/M3)
      │
      ▼
-Phase 4: Frontend Development — Client Web (M5), Driver App (M6)
+Phase 4: Frontend Development — Client Web (M5), Driver Web Portal (M6)
      │
      ▼
 Phase 5: Saga Transaction Coordinator & WebSockets (M4 + M1/M2/M3)
@@ -108,10 +108,10 @@ Phase 7: Group Documentation & Screencast Presentation (All)
 *   **Detail:** Build simple client view displaying credentials login, a detailed order creation modal (address inputs, priority levels, package weight), and an order logs table. Connect Nginx proxy container to rewrite URLs.
 *   **Verification:** Access `http://localhost:8080`, log in using `techmart@example.com`, and submit a mock order.
 
-### Step 4.2: Driver Mobile App & Canvas Pod
+### Step 4.2: Responsive Driver Web Portal & Canvas POD
 *   **Responsible Member:** **Member 6**
 *   **Task:** Create driver interface.
-*   **Detail:** Design mobile layout with CSS styles. Fetch today's manifest route list from `/api/driver/route/today`. Build standard HTML canvas signatures capture script binding both touch/mouse gestures to base64 export files.
+*   **Detail:** Design a responsive web layout. Fetch today's manifest route list from `/api/driver/route/today`. Build standard HTML canvas signature capture supporting both touch and mouse gestures with base64 export.
 *   **Verification:** Open app on a phone/browser emulator, draw on canvas signature line, and confirm submit button posts signature payload without errors.
 
 ---
@@ -151,7 +151,7 @@ Phase 7: Group Documentation & Screencast Presentation (All)
 *   **Task:** Run through the complete business workflow:
     1. Log in as client `CLT001` on Client Portal.
     2. Place order. Verify in-flight transaction loader icon appears.
-    3. Log in as driver `DRV001` on Driver App. Confirm new order stop appears dynamically in sequence.
+    3. Log in as driver `DRV001` on the Driver Web Portal. Confirm the new order stop appears dynamically in sequence.
     4. Move order along warehouse states.
     5. Mark order as delivered, draw signature, and submit.
     6. Confirm Client Portal updates to `delivered` status instantly without page reload.

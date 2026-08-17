@@ -61,7 +61,7 @@ So we build **just enough to demonstrate the architecture** — no over-engineer
                               ↑ API Gateway talks to all of them
 
   ┌─────────────────┐    ┌──────────────────┐
-  │  Client Portal  │    │   Driver App     │
+  │  Client Portal  │    │ Driver Web Portal│
   │ HTML/JS :8080   │    │ HTML/JS  :8081   │
   └─────────────────┘    └──────────────────┘
 ```
@@ -86,7 +86,7 @@ Each member owns **one complete component** end-to-end (code + docs section).
 | **Member 3** | WMS Service (mock) | Python, Flask, TCP sockets, RabbitMQ | Section c.iii — WMS Adapter + TCP |
 | **Member 4** | API Gateway | Node.js, Express, JWT, WebSockets, RabbitMQ consumer | Section b — Architecture diagrams |
 | **Member 5** | Client Portal | HTML, CSS, Vanilla JS, Nginx | Section d — Prototype demo |
-| **Member 6** | Database + Docker + Driver App | PostgreSQL, Docker Compose, HTML/JS | Section a + e — Intro & Security |
+| **Member 6** | Database + Docker + Driver Web Portal | PostgreSQL, Docker Compose, HTML/JS | Section a + e — Intro & Security |
 
 > **Shared responsibilities:** All members document their own component's architecture pattern and attend the screencast recording.
 
@@ -296,7 +296,7 @@ Each member owns **one complete component** end-to-end (code + docs section).
 
 ---
 
-### Component 6: Database + Docker + Driver App (Member 6)
+### Component 6: Database + Docker + Driver Web Portal (Member 6)
 
 **Folder:** `database/`, `driver-app/`, root files
 
@@ -314,7 +314,7 @@ Tables needed (keep minimal):
 
 Seed data: 2-3 clients, 2 drivers (all with password `password123` bcrypt hash).
 
-**6b: Driver App** (`driver-app/`):
+**6b: Responsive Driver Web Portal** (`driver-app/`):
 - Login page (driver email + password)
 - Dashboard: today's route list (stops with address, ETA)
 - Click a stop → mark as "Delivered" (with recipient name field) or "Failed" (with reason dropdown)
@@ -383,7 +383,7 @@ Week 2:
 
 Week 3:
   - Member 5: Client Portal (login + dashboard + WebSocket)
-  - Member 6: Driver App (login + route view + delivery marking)
+  - Member 6: Driver Web Portal (login + route view + delivery marking)
   - Integration testing with all services running
 
 Week 4:

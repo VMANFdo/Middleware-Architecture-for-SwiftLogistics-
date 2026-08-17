@@ -150,9 +150,12 @@ services:
       DATABASE_URL: postgresql://swift_admin:swift_pw_dev_only@postgres:5432/swifttrack
       RABBITMQ_URL: amqp://swift_admin:swift_pw_dev_only@rabbitmq:5672
       CMS_SOAP_URL: http://cms-service:8001/soap
+      CMS_REST_URL: http://cms-service:8001
       ROS_REST_URL: http://ros-service:8002
       WMS_TCP_HOST: wms-service
       WMS_TCP_PORT: 9000
+      JWT_SECRET: ${JWT_SECRET:-swiftlogistics-secret-key-2026}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-8h}
     depends_on:
       postgres:
         condition: service_healthy
@@ -188,7 +191,7 @@ services:
       api-gateway:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8080/"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -200,10 +203,16 @@ services:
       context: ./driver-app
     container_name: swift-driver-app
     restart: unless-stopped
-    profiles: ["driver-app"]
+    init: true
     ports:
-      - "8081:80"
+      - "${DRIVER_PORTAL_HOST_PORT:-8081}:80"
     depends_on:
-      - api-gateway
+      api-gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - swift-network
