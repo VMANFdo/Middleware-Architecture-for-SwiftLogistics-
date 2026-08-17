@@ -1,14 +1,18 @@
 const express = require('express');
 const amqp = require('amqplib');
+const { Pool } = require('pg');
 
 const PORT = process.env.PORT || 8002;
 const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://swift_admin:swift_pw_dev_only@rabbitmq:5672';
+const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://swift_admin:swift_pw_dev_only@postgres:5432/swifttrack';
 const ORDER_EXCHANGE = 'order_events';
 const ROUTE_EXCHANGE = 'route_events';
 const ORDER_QUEUE = 'ros_order_events';
 
 const app = express();
 app.use(express.json());
+
+const pool = new Pool({ connectionString: DATABASE_URL });
 
 const vehicles = [
   {
@@ -103,6 +107,106 @@ function optimiseStops(driverCode, stops) {
   return ordered;
 }
 
+// ---------------------------------------------------------------------
+// Postgres persistence — mirrors the in-memory route into routes /
+// route_stops so assignments survive a container restart, and updates
+// orders.status so the rest of the system sees the order as assigned.
+// This is best-effort: a DB failure here is logged but does not crash
+// the consumer or block the in-memory flow other endpoints rely on.
+// ---------------------------------------------------------------------
+async function getDriverIdByCode(driverCode) {
+  const { rows } = await pool.query('SELECT id FROM drivers WHERE driver_code = $1', [driverCode]);
+  return rows[0]?.id || null;
+}
+
+async function getOrderIdByCode(orderCode) {
+  const { rows } = await pool.query('SELECT id FROM orders WHERE order_code = $1', [orderCode]);
+  return rows[0]?.id || null;
+}
+
+async function upsertRouteRow(driverId, routeDate) {
+  const { rows } = await pool.query(
+    `INSERT INTO routes (driver_id, route_date, status)
+     VALUES ($1, $2, 'planned')
+     ON CONFLICT (driver_id, route_date)
+     DO UPDATE SET status = routes.status
+     RETURNING id`,
+    [driverId, routeDate],
+  );
+  return rows[0].id;
+}
+
+async function upsertRouteStopRow(routeDbId, orderId, stop) {
+  const existing = await pool.query(
+    'SELECT id FROM route_stops WHERE route_id = $1 AND order_id = $2',
+    [routeDbId, orderId],
+  );
+
+  if (existing.rows.length > 0) {
+    await pool.query(
+      `UPDATE route_stops
+       SET sequence_index = $1, latitude = $2, longitude = $3
+       WHERE id = $4`,
+      [stop.sequence, stop.delivery_lat, stop.delivery_lng, existing.rows[0].id],
+    );
+    return;
+  }
+
+  // sequence_index has a UNIQUE(route_id, sequence_index) constraint, and
+  // re-optimising can reassign an index another stop already holds — retry
+  // once with a temporary offset if that happens, rather than failing the
+  // whole persistence pass over one collision.
+  try {
+    await pool.query(
+      `INSERT INTO route_stops (route_id, order_id, sequence_index, latitude, longitude, stop_status)
+       VALUES ($1, $2, $3, $4, $5, 'pending')`,
+      [routeDbId, orderId, stop.sequence, stop.delivery_lat, stop.delivery_lng],
+    );
+  } catch (error) {
+    if (error.code === '23505') {
+      await pool.query(
+        `UPDATE route_stops SET sequence_index = $1 + 1000
+         WHERE route_id = $2 AND sequence_index = $1 AND order_id != $3`,
+        [stop.sequence, routeDbId, orderId],
+      );
+      await pool.query(
+        `INSERT INTO route_stops (route_id, order_id, sequence_index, latitude, longitude, stop_status)
+         VALUES ($1, $2, $3, $4, $5, 'pending')`,
+        [routeDbId, orderId, stop.sequence, stop.delivery_lat, stop.delivery_lng],
+      );
+    } else {
+      throw error;
+    }
+  }
+}
+
+async function persistRouteToDb(route) {
+  try {
+    const driverId = await getDriverIdByCode(route.driver_code);
+    if (!driverId) {
+      console.error(`ROS persistence: no driver found for code ${route.driver_code}`);
+      return;
+    }
+
+    const routeDbId = await upsertRouteRow(driverId, route.date);
+
+    for (const stop of route.stops) {
+      const orderId = await getOrderIdByCode(stop.order_code);
+      if (!orderId) {
+        console.error(`ROS persistence: no order found for code ${stop.order_code}`);
+        continue;
+      }
+      await upsertRouteStopRow(routeDbId, orderId, stop);
+      await pool.query(
+        `UPDATE orders SET status = 'assigned', updated_at = now() WHERE id = $1 AND status = 'pending'`,
+        [orderId],
+      );
+    }
+  } catch (error) {
+    console.error('ROS persistence failed (route stays in-memory only for now):', error.message);
+  }
+}
+
 async function publishRouteProcessingComplete(route) {
   if (!rabbitChannel) {
     return;
@@ -144,6 +248,7 @@ async function addOrderToRoute(order) {
   route.stops = optimiseStops(driverCode, route.stops);
   route.updated_at = new Date().toISOString();
   await publishRouteProcessingComplete(route);
+  await persistRouteToDb(route);
   return route;
 }
 
@@ -202,6 +307,7 @@ app.put('/api/routes/:routeId/stops/:orderCode', async (req, res) => {
   stop.status = req.body.status || stop.status;
   route.updated_at = new Date().toISOString();
   await publishRouteProcessingComplete(route);
+  await persistRouteToDb(route);
   return res.json({ success: true, route });
 });
 

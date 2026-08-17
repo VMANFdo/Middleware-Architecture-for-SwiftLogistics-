@@ -82,8 +82,11 @@ services:
       - "8002:8002"
     environment:
       RABBITMQ_URL: amqp://swift_admin:swift_pw_dev_only@rabbitmq:5672
+      DATABASE_URL: postgresql://swift_admin:swift_pw_dev_only@postgres:5432/swifttrack
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     networks:
       - swift-network
