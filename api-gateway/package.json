@@ -1,7 +1,7 @@
 {
   "name": "swifttrack-api-gateway",
   "version": "0.1.0",
-  "description": "API Gateway for the SwiftTrack middleware platform (SCS3208 Assignment 4)",
+  "description": "API Gateway for the SwiftTrack middleware platform (IS3208 Assignment 4)",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
@@ -11,6 +11,7 @@
     "axios": "^1.19.0",
     "cors": "^2.8.5",
     "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.3",
     "xml2js": "^0.6.2"
   }
 }

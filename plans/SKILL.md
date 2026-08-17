@@ -9,7 +9,7 @@ description: >
 ---
 
 # SwiftTrack AI Agent Skill File
-## SCS3208 Middleware Architecture Assignment
+## IS3208 Middleware Architecture Assignment
 
 ---
 

@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="SwiftTrack client order management and tracking portal">
+  <title>SwiftTrack Client Portal</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="toastRegion" class="toast-region" aria-live="polite"></div>
+
+  <main id="loginView" class="login-view">
+    <section class="brand-panel">
+      <a class="brand brand-light" href="#" aria-label="SwiftTrack home">
+        <span class="brand-mark">S</span><span>SwiftTrack</span>
+      </a>
+      <div class="brand-copy">
+        <p class="eyebrow">SwiftLogistics client portal</p>
+        <h1>Every delivery.<br><em>Clearly tracked.</em></h1>
+        <p>Create orders, follow warehouse processing, and receive delivery updates in one place.</p>
+      </div>
+      <p class="brand-foot">Middleware Architecture · IS3208</p>
+    </section>
+
+    <section class="login-panel">
+      <form id="loginForm" class="login-card">
+        <div>
+          <p class="eyebrow dark">Welcome back</p>
+          <h2>Sign in to your account</h2>
+          <p class="muted">Use your registered company credentials.</p>
+        </div>
+        <label>Email address
+          <input id="email" name="email" type="email" value="techmart@example.com" autocomplete="email" required>
+        </label>
+        <label>Password
+          <input id="password" name="password" type="password" value="password123" autocomplete="current-password" required>
+        </label>
+        <p id="loginError" class="form-error" role="alert"></p>
+        <button class="button primary full" type="submit">Sign in <span>→</span></button>
+        <p class="demo-note">Demo: techmart@example.com / password123</p>
+      </form>
+    </section>
+  </main>
+
+  <div id="appView" class="app-view hidden">
+    <aside class="sidebar">
+      <a class="brand" href="#"><span class="brand-mark">S</span><span>SwiftTrack</span></a>
+      <nav aria-label="Main navigation">
+        <button class="nav-item active" id="ordersNav" data-view="orders"><span>▦</span> Orders</button>
+        <button class="nav-item" id="newOrderNav"><span>＋</span> New order</button>
+        <button class="nav-item" id="updatesNav" data-view="notifications"><span>◌</span> Updates <b id="updateCount" hidden>0</b></button>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="connection"><i id="connectionDot"></i><span id="connectionText">Connecting…</span></div>
+        <button id="logoutButton" class="nav-item"><span>↪</span> Sign out</button>
+      </div>
+    </aside>
+
+    <main class="workspace">
+      <header class="topbar">
+        <button id="menuButton" class="icon-button menu-button" aria-label="Open menu">☰</button>
+        <div>
+          <p class="eyebrow dark">Client workspace</p>
+          <h2 id="companyName">Order dashboard</h2>
+        </div>
+        <div class="top-actions">
+          <button id="refreshButton" class="icon-button" aria-label="Refresh orders">↻</button>
+          <div id="clientAvatar" class="avatar">ST</div>
+        </div>
+      </header>
+
+      <section class="content">
+        <div class="hero-row">
+          <div>
+            <h1>Good day, <span id="clientGreeting">client</span>.</h1>
+            <p class="muted">Here is the latest movement across your deliveries.</p>
+          </div>
+          <button id="newOrderButton" class="button primary">＋ Create order</button>
+        </div>
+
+        <section class="stats" aria-label="Order summary">
+          <article><span class="stat-icon ink">□</span><div><strong id="totalOrders">0</strong><p>Total orders</p></div></article>
+          <article><span class="stat-icon amber">◷</span><div><strong id="activeOrders">0</strong><p>Active</p></div></article>
+          <article><span class="stat-icon blue">↗</span><div><strong id="transitOrders">0</strong><p>In transit</p></div></article>
+          <article><span class="stat-icon green">✓</span><div><strong id="deliveredOrders">0</strong><p>Delivered</p></div></article>
+        </section>
+
+        <section id="ordersSection" class="panel orders-panel">
+          <div class="panel-head">
+            <div><h3>Recent orders</h3><p class="muted">Live status from CMS, WMS, and ROS</p></div>
+            <div class="search-wrap"><span>⌕</span><input id="orderSearch" type="search" placeholder="Search orders"></div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Order</th><th>Route</th><th>Weight</th><th>Created</th><th>Status</th><th></th></tr></thead>
+              <tbody id="ordersBody"></tbody>
+            </table>
+            <div id="ordersEmpty" class="empty-state hidden"><span>□</span><h3>No orders yet</h3><p>Create your first delivery order to see it here.</p></div>
+            <div id="ordersLoading" class="loading-state"><span></span> Loading orders…</div>
+          </div>
+        </section>
+
+        <section id="updatesSection" class="panel updates-panel">
+          <div class="panel-head"><div><h3>Live updates</h3><p class="muted">Real-time middleware events</p></div><button id="clearUpdates" class="text-button">Clear</button></div>
+          <div id="updatesList" class="updates-list"><p class="empty-copy">No live updates received in this session.</p></div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="orderDialog">
+    <form id="orderForm" method="dialog">
+      <div class="dialog-head"><div><p class="eyebrow dark">New shipment</p><h2>Create delivery order</h2></div><button type="button" class="close-button" data-close aria-label="Close">×</button></div>
+      <div class="form-grid">
+        <label class="wide">Pickup address<input name="pickup_address" placeholder="123 Tech Street, Colombo" required></label>
+        <label>Pickup latitude<input name="pickup_lat" type="number" step="any" value="6.9271" required></label>
+        <label>Pickup longitude<input name="pickup_lng" type="number" step="any" value="79.8612" required></label>
+        <label class="wide">Delivery address<input name="delivery_address" placeholder="456 Style Avenue, Kandy" required></label>
+        <label>Delivery latitude<input name="delivery_lat" type="number" step="any" value="7.2906" required></label>
+        <label>Delivery longitude<input name="delivery_lng" type="number" step="any" value="80.6337" required></label>
+        <label>Weight (kg)<input name="weight" type="number" min="0.1" step="0.1" value="1" required></label>
+        <label>Priority<select name="priority"><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option></select></label>
+      </div>
+      <p id="orderError" class="form-error" role="alert"></p>
+      <div class="dialog-actions"><button type="button" class="button secondary" data-close>Cancel</button><button class="button primary" type="submit">Create order</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="detailsDialog">
+    <div class="dialog-head"><div><p class="eyebrow dark">Shipment details</p><h2 id="detailsTitle">Order</h2></div><button class="close-button" data-close-details aria-label="Close">×</button></div>
+    <div id="detailsContent" class="details-content"></div>
+  </dialog>
+  <script src="app.js" defer></script>
+</body>
+</html>

@@ -1,8 +1,8 @@
 # SwiftTrack — Tasks List
 
 ## Phase 1: Environment & Base Infrastructure Setup (Days 1–3)
-- [ ] Setup shared PostgreSQL database schema & bcrypt seed accounts (`database/init.sql`) - **Member 6**
-- [ ] Set up Docker Compose configuration skeleton with bridge networks and service definitions (`docker-compose.yml`) - **Member 6**
+- [x] Setup shared PostgreSQL database schema & bcrypt seed accounts (`database/init.sql`) - **Member 6**
+- [x] Set up Docker Compose configuration skeleton with bridge networks and service definitions (`docker-compose.yml`) - **Member 6**
 - [ ] Bootstrap Node.js Express server with health checking routes (`api-gateway/app.js`) - **Member 4**
 
 ## Phase 2: Core Mock Services Development (Days 4–10)
@@ -19,8 +19,8 @@
 - [ ] Implement Gateway JWT Token authentication and authorization middleware - **Member 4**
 
 ## Phase 4: Frontend Development (Days 16–20)
-- [ ] Design and code Client Web Portal UI (Dashboard & Orders intake panel) - **Member 5**
-- [ ] Setup Nginx server configuration for Client Portal resource routing - **Member 5**
+- [x] Design and code Client Web Portal UI (Dashboard & Orders intake panel) - **Member 5**
+- [x] Setup Nginx server configuration for Client Portal resource routing - **Member 5**
 - [ ] Develop Driver Mobile App manifest stop list view - **Member 6**
 - [ ] Write HTML Canvas script to capture handwritten signature PODs - **Member 6**
 

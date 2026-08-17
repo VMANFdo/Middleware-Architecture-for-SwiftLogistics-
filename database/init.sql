@@ -1,6 +1,6 @@
 -- =====================================================================
 -- SwiftTrack — PostgreSQL Schema & Seed Data
--- SCS3208 Middleware Architecture | Assignment 4 | Phase 1, Step 1.1
+-- IS3208 Middleware Architecture | Assignment 4 | Phase 1, Step 1.1
 -- =====================================================================
 -- This script runs automatically on first container start when mounted
 -- to /docker-entrypoint-initdb.d/ in the postgres service (see
@@ -16,7 +16,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- ---------------------------------------------------------------------
 -- clients — e-commerce companies using the SwiftTrack client portal
 -- ---------------------------------------------------------------------
-CREATE TABLE clients (
+CREATE TABLE IF NOT EXISTS clients (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     client_code     VARCHAR(20)  UNIQUE NOT NULL,        -- e.g. CLT001
     company_name    VARCHAR(150) NOT NULL,
@@ -25,13 +25,17 @@ CREATE TABLE clients (
     password_hash   VARCHAR(100) NOT NULL,                -- bcrypt
     phone           VARCHAR(30),
     address          TEXT,
+    contract_type   VARCHAR(30)  NOT NULL DEFAULT 'standard'
+                        CHECK (contract_type IN ('standard','premium','enterprise')),
+    status          VARCHAR(20)  NOT NULL DEFAULT 'active'
+                        CHECK (status IN ('active','inactive','suspended')),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- ---------------------------------------------------------------------
 -- drivers — SwiftTrack driver app users
 -- ---------------------------------------------------------------------
-CREATE TABLE drivers (
+CREATE TABLE IF NOT EXISTS drivers (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     driver_code     VARCHAR(20)  UNIQUE NOT NULL,        -- e.g. DRV001
     name            VARCHAR(100) NOT NULL,
@@ -39,6 +43,8 @@ CREATE TABLE drivers (
     password_hash   VARCHAR(100) NOT NULL,
     phone           VARCHAR(30),
     vehicle_id      VARCHAR(30),
+    vehicle_type    VARCHAR(50),
+    vehicle_number  VARCHAR(50),
     status          VARCHAR(20)  NOT NULL DEFAULT 'off_duty'
                         CHECK (status IN ('off_duty','on_duty','on_route')),
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -47,12 +53,16 @@ CREATE TABLE drivers (
 -- ---------------------------------------------------------------------
 -- orders — created via CMS, tracked across ROS/WMS
 -- ---------------------------------------------------------------------
-CREATE TABLE orders (
+CREATE TABLE IF NOT EXISTS orders (
     id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     order_code          VARCHAR(30) UNIQUE NOT NULL,
     client_id           UUID NOT NULL REFERENCES clients(id) ON DELETE RESTRICT,
     pickup_address       TEXT NOT NULL,
     delivery_address    TEXT NOT NULL,
+    pickup_lat          NUMERIC(10,8),
+    pickup_lng          NUMERIC(11,8),
+    delivery_lat        NUMERIC(10,8),
+    delivery_lng        NUMERIC(11,8),
     recipient_name      VARCHAR(100),
     recipient_phone     VARCHAR(30),
     priority            VARCHAR(10) NOT NULL DEFAULT 'normal'
@@ -60,8 +70,9 @@ CREATE TABLE orders (
     weight_kg           NUMERIC(6,2),
     status              VARCHAR(20) NOT NULL DEFAULT 'pending'
                             CHECK (status IN
-                                ('pending','processing','assigned',
-                                 'out_for_delivery','delivered','failed','cancelled')),
+                                ('pending','processing','assigned','ready','loaded',
+                                 'out_for_delivery','in_transit','delivered',
+                                 'failed','cancelled')),
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -69,7 +80,7 @@ CREATE TABLE orders (
 -- ---------------------------------------------------------------------
 -- packages — WMS-side tracking of physical items per order
 -- ---------------------------------------------------------------------
-CREATE TABLE packages (
+CREATE TABLE IF NOT EXISTS packages (
     id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     order_id            UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
     barcode             VARCHAR(50) UNIQUE NOT NULL,
@@ -77,14 +88,14 @@ CREATE TABLE packages (
     bin_location        VARCHAR(20),
     status              VARCHAR(20) NOT NULL DEFAULT 'received'
                             CHECK (status IN
-                                ('received','stored','picked','loaded','dispatched')),
+                                ('received','stored','ready','picked','loaded','dispatched')),
     warehouse_event_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- ---------------------------------------------------------------------
 -- routes — one per driver per day, generated by ROS
 -- ---------------------------------------------------------------------
-CREATE TABLE routes (
+CREATE TABLE IF NOT EXISTS routes (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     driver_id       UUID NOT NULL REFERENCES drivers(id) ON DELETE RESTRICT,
     route_date      DATE NOT NULL,
@@ -97,7 +108,7 @@ CREATE TABLE routes (
 -- ---------------------------------------------------------------------
 -- route_stops — ordered stops within a route, one per order
 -- ---------------------------------------------------------------------
-CREATE TABLE route_stops (
+CREATE TABLE IF NOT EXISTS route_stops (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     route_id        UUID NOT NULL REFERENCES routes(id) ON DELETE CASCADE,
     order_id        UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
@@ -113,13 +124,15 @@ CREATE TABLE route_stops (
 -- ---------------------------------------------------------------------
 -- delivery_proofs — signature / photo proof captured by drivers
 -- ---------------------------------------------------------------------
-CREATE TABLE delivery_proofs (
+CREATE TABLE IF NOT EXISTS delivery_proofs (
     id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     order_id            UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
     driver_id           UUID NOT NULL REFERENCES drivers(id) ON DELETE RESTRICT,
     delivery_status     VARCHAR(10) NOT NULL
                             CHECK (delivery_status IN ('delivered','failed')),
     failure_reason      VARCHAR(150),                    -- e.g. "recipient not available"
+    recipient_name      VARCHAR(100),
+    notes               TEXT,
     signature_base64    TEXT,
     photo_base64        TEXT,
     captured_at         TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -128,7 +141,7 @@ CREATE TABLE delivery_proofs (
 -- ---------------------------------------------------------------------
 -- transaction_logs — Saga step log for the distributed order transaction
 -- ---------------------------------------------------------------------
-CREATE TABLE transaction_logs (
+CREATE TABLE IF NOT EXISTS transaction_logs (
     id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     order_id        UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
     saga_step       VARCHAR(30) NOT NULL,                 -- e.g. CMS_CREATE, ROS_ASSIGN, WMS_ALLOCATE
@@ -142,13 +155,27 @@ CREATE TABLE transaction_logs (
 -- ---------------------------------------------------------------------
 -- Indexes for common lookups
 -- ---------------------------------------------------------------------
-CREATE INDEX idx_orders_client_id       ON orders(client_id);
-CREATE INDEX idx_orders_status          ON orders(status);
-CREATE INDEX idx_packages_order_id      ON packages(order_id);
-CREATE INDEX idx_packages_barcode       ON packages(barcode);
-CREATE INDEX idx_route_stops_route_id   ON route_stops(route_id);
-CREATE INDEX idx_route_stops_order_id   ON route_stops(order_id);
-CREATE INDEX idx_transaction_logs_order ON transaction_logs(order_id);
+CREATE INDEX IF NOT EXISTS idx_orders_client_id       ON orders(client_id);
+CREATE INDEX IF NOT EXISTS idx_orders_status          ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_packages_order_id      ON packages(order_id);
+CREATE INDEX IF NOT EXISTS idx_packages_barcode       ON packages(barcode);
+CREATE INDEX IF NOT EXISTS idx_route_stops_route_id   ON route_stops(route_id);
+CREATE INDEX IF NOT EXISTS idx_route_stops_order_id   ON route_stops(order_id);
+CREATE INDEX IF NOT EXISTS idx_transaction_logs_order ON transaction_logs(order_id);
+
+-- Keep order timestamps accurate regardless of which service performs an update.
+CREATE OR REPLACE FUNCTION set_order_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_orders_updated_at ON orders;
+CREATE TRIGGER trg_orders_updated_at
+BEFORE UPDATE ON orders
+FOR EACH ROW EXECUTE FUNCTION set_order_updated_at();
 
 -- =====================================================================
 -- Seed Data
@@ -156,29 +183,42 @@ CREATE INDEX idx_transaction_logs_order ON transaction_logs(order_id);
 -- Hash generated with bcrypt, cost factor 10.
 -- =====================================================================
 
-INSERT INTO clients (client_code, company_name, contact_person, email, password_hash, phone, address) VALUES
-('CLT001', 'TechMart Electronics', 'Nadeesha Perera', 'techmart@example.com',
+INSERT INTO clients (client_code, company_name, contact_person, email, password_hash, phone, address, contract_type) VALUES
+('CLT001', 'TechMart Online', 'Nadeesha Perera', 'techmart@example.com',
  '$2b$10$EKGAB9jYyE6Okdn4/zyn2uB3wqIFtx8WAoecFEkqOcyfFe2uOVlbm',
- '+94 71 234 5678', '45 Galle Road, Colombo 03'),
-('CLT002', 'Kandy Craft Sellers', 'Ruwan Fernando', 'kandycraft@example.com',
+ '+94 71 234 5678', '45 Galle Road, Colombo 03', 'premium'),
+('CLT002', 'Fashion Hub', 'Ruwan Fernando', 'fashionhub@example.com',
  '$2b$10$EKGAB9jYyE6Okdn4/zyn2uB3wqIFtx8WAoecFEkqOcyfFe2uOVlbm',
- '+94 77 345 6789', '12 Peradeniya Road, Kandy');
+ '+94 77 345 6789', '12 Peradeniya Road, Kandy', 'standard'),
+('CLT003', 'HomeGoods Lanka', 'Anjali Silva', 'homegoods@example.com',
+ '$2b$10$EKGAB9jYyE6Okdn4/zyn2uB3wqIFtx8WAoecFEkqOcyfFe2uOVlbm',
+ '+94 76 456 7890', '18 Main Street, Galle', 'enterprise')
+ON CONFLICT (client_code) DO NOTHING;
 
-INSERT INTO drivers (driver_code, name, email, password_hash, phone, vehicle_id, status) VALUES
-('DRV001', 'Kasun Jayasuriya', 'driver1@example.com',
+INSERT INTO drivers (driver_code, name, email, password_hash, phone, vehicle_id, vehicle_type, vehicle_number, status) VALUES
+('DRV001', 'Kasun Perera', 'kasun@swiftlogistics.lk',
  '$2b$10$EKGAB9jYyE6Okdn4/zyn2uB3wqIFtx8WAoecFEkqOcyfFe2uOVlbm',
- '+94 70 111 2222', 'WP-CAB-4521', 'off_duty'),
-('DRV002', 'Ishara Wickramasinghe', 'driver2@example.com',
+ '+94 70 111 2222', 'WP-KA-1234', 'Van', 'WP-KA-1234', 'off_duty'),
+('DRV002', 'Nimal Silva', 'nimal@swiftlogistics.lk',
  '$2b$10$EKGAB9jYyE6Okdn4/zyn2uB3wqIFtx8WAoecFEkqOcyfFe2uOVlbm',
- '+94 70 333 4444', 'WP-CAB-7789', 'off_duty');
+ '+94 70 333 4444', 'WP-NB-5678', 'Motorcycle', 'WP-NB-5678', 'off_duty')
+ON CONFLICT (driver_code) DO NOTHING;
 
 -- A couple of demo orders so Phase 2/3 devs have data to work against immediately
-INSERT INTO orders (order_code, client_id, pickup_address, delivery_address, recipient_name, recipient_phone, priority, weight_kg, status)
+INSERT INTO orders (order_code, client_id, pickup_address, delivery_address,
+                    pickup_lat, pickup_lng, delivery_lat, delivery_lng,
+                    recipient_name, recipient_phone, priority, weight_kg, status)
 SELECT 'ORD-0001', id, '45 Galle Road, Colombo 03', '10 Havelock Road, Colombo 05',
+       6.92710000, 79.86120000, 6.89160000, 79.85670000,
        'Sanduni Silva', '+94 76 555 1111', 'normal', 2.4, 'pending'
-FROM clients WHERE client_code = 'CLT001';
+FROM clients WHERE client_code = 'CLT001'
+ON CONFLICT (order_code) DO NOTHING;
 
-INSERT INTO orders (order_code, client_id, pickup_address, delivery_address, recipient_name, recipient_phone, priority, weight_kg, status)
+INSERT INTO orders (order_code, client_id, pickup_address, delivery_address,
+                    pickup_lat, pickup_lng, delivery_lat, delivery_lng,
+                    recipient_name, recipient_phone, priority, weight_kg, status)
 SELECT 'ORD-0002', id, '12 Peradeniya Road, Kandy', '5 Lake Drive, Kandy',
+       7.29060000, 80.63370000, 7.29320000, 80.63500000,
        'Chamara Bandara', '+94 76 555 2222', 'high', 5.1, 'pending'
-FROM clients WHERE client_code = 'CLT002';
+FROM clients WHERE client_code = 'CLT002'
+ON CONFLICT (order_code) DO NOTHING;

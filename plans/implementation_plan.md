@@ -1,5 +1,5 @@
 # SwiftTrack — Middleware Architecture Reimplementation Plan
-### SCS3208 | Assignment 4 | Group of 6
+### IS3208 | Assignment 4 | Group of 6
 
 ---
 

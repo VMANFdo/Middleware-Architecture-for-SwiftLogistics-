@@ -1,6 +1,6 @@
 // =====================================================================
 // SwiftTrack API Gateway
-// SCS3208 Middleware Architecture | Assignment 4
+// IS3208 Middleware Architecture | Assignment 4
 // Phase 3: REST-to-SOAP and REST-to-TCP protocol bridging
 // =====================================================================
 

@@ -1,5 +1,5 @@
 # SwiftTrack — Master Phase-by-Phase Implementation Plan
-### SCS3208 | Assignment 4 | Group of 6 (Master Plan)
+### IS3208 | Assignment 4 | Group of 6 (Master Plan)
 
 This plan maps out the construction of the **SwiftTrack** middleware platform in chronological order. Each phase outlines the exact steps, responsible members, key interfaces, and testing strategies.
 

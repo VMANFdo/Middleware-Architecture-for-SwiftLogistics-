@@ -1,5 +1,5 @@
 # SwiftTrack — Detailed Work Division & Integration Plan
-### SCS3208 | Assignment 4 | Group of 6
+### IS3208 | Assignment 4 | Group of 6
 
 This document details the exact responsibilities of each of the 6 group members, what they must code, and the critical **overlaps (interfaces)** where they must coordinate.
 

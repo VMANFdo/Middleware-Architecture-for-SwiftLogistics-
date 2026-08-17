@@ -116,12 +116,22 @@ docker compose ps
 curl http://localhost:3000/health
 ```
 
-Once teammates' services (`cms-service`, `ros-service`, `wms-service`,
-`client-portal`, `driver-app`) land in their respective folders, bring up
-the full stack:
+Bring up the currently implemented stack (infrastructure, backend services,
+gateway, and Client Portal):
 
 ```bash
 docker compose up --build
+```
+
+If ports 3000 or 8080 are already in use, copy `.env.example` to `.env`
+before starting. Its host-port overrides do not affect communication between
+containers.
+
+The Driver App is intentionally kept in the optional `driver-app` profile
+until its implementation lands. Include it later with:
+
+```bash
+docker compose --profile driver-app up --build
 ```
 
 ## 5. Service Port Map

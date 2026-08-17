@@ -15,12 +15,13 @@ services:
     image: postgres:16-alpine
     container_name: swift-postgres
     restart: unless-stopped
+    init: true
     environment:
       POSTGRES_DB: swifttrack
       POSTGRES_USER: swift_admin
       POSTGRES_PASSWORD: swift_pw_dev_only
-    ports:
-      - "5432:5432"
+ #   ports:
+    #  - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -29,6 +30,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 5s
     networks:
       - swift-network
 
@@ -36,17 +38,19 @@ services:
     image: rabbitmq:3-management-alpine
     container_name: swift-rabbitmq
     restart: unless-stopped
+    init: true
     environment:
       RABBITMQ_DEFAULT_USER: swift_admin
       RABBITMQ_DEFAULT_PASS: swift_pw_dev_only
     ports:
       - "5672:5672"    # AMQP
-      - "15672:15672"  # Management UI (http://localhost:15672)
+      - "15672:15672"  # Management UI (http://127.0.0.1:15672)
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 10s
     networks:
       - swift-network
 
@@ -60,6 +64,7 @@ services:
       context: ./cms-service
     container_name: swift-cms
     restart: unless-stopped
+    init: true
     ports:
       - "8001:8001"
     environment:
@@ -70,6 +75,12 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     networks:
       - swift-network
 
@@ -78,6 +89,7 @@ services:
       context: ./ros-service
     container_name: swift-ros
     restart: unless-stopped
+    init: true
     ports:
       - "8002:8002"
     environment:
@@ -88,6 +100,12 @@ services:
         condition: service_healthy
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8002/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     networks:
       - swift-network
 
@@ -96,6 +114,7 @@ services:
       context: ./wms-service
     container_name: swift-wms
     restart: unless-stopped
+    init: true
     ports:
       - "8003:8003"  # REST/health
       - "9000:9000"  # proprietary TCP protocol
@@ -107,6 +126,12 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8003/health', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     networks:
       - swift-network
 
@@ -118,6 +143,7 @@ services:
       context: ./api-gateway
     container_name: swift-gateway
     restart: unless-stopped
+    init: true
     ports:
       - "${API_GATEWAY_HOST_PORT:-3000}:3000"
     environment:
@@ -132,6 +158,18 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      cms-service:
+        condition: service_healthy
+      ros-service:
+        condition: service_healthy
+      wms-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     networks:
       - swift-network
 
@@ -143,10 +181,17 @@ services:
       context: ./client-portal
     container_name: swift-client-portal
     restart: unless-stopped
+    init: true
     ports:
-      - "8080:80"
+      - "${CLIENT_PORTAL_HOST_PORT:-8080}:80"
     depends_on:
-      - api-gateway
+      api-gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8080/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - swift-network
 
@@ -155,6 +200,7 @@ services:
       context: ./driver-app
     container_name: swift-driver-app
     restart: unless-stopped
+    profiles: ["driver-app"]
     ports:
       - "8081:80"
     depends_on:
