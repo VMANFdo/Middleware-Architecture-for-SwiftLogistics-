@@ -369,7 +369,92 @@ async function connectRabbitWithRetry() {
   }
 }
 
-app.listen(PORT, () => {
+// ─────────────────────────────────────────────────────────────────────────────
+// Startup: Restore today's routes from PostgreSQL into in-memory store.
+// This ensures data survives container restarts.
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadRoutesFromDb() {
+  try {
+    const today = todayKey();
+    const { rows } = await pool.query(
+      `SELECT
+         r.id         AS db_route_id,
+         d.driver_code,
+         r.route_date::TEXT AS route_date,
+         r.status     AS route_status,
+         rs.sequence_index,
+         rs.stop_status,
+         rs.latitude,
+         rs.longitude,
+         rs.eta,
+         o.order_code,
+         o.pickup_address,
+         o.delivery_address,
+         o.pickup_lat,
+         o.pickup_lng,
+         o.delivery_lat,
+         o.delivery_lng,
+         o.weight_kg,
+         c.client_code
+       FROM routes r
+       JOIN drivers d ON d.id = r.driver_id
+       JOIN route_stops rs ON rs.route_id = r.id
+       JOIN orders o ON o.id = rs.order_id
+       JOIN clients c ON c.id = o.client_id
+       WHERE r.route_date = $1
+       ORDER BY d.driver_code, rs.sequence_index`,
+      [today]
+    );
+
+    if (rows.length === 0) {
+      console.log('ROS startup: no existing routes found in DB for today.');
+      return;
+    }
+
+    for (const row of rows) {
+      const routeId = routeIdFor(row.driver_code);
+      if (!routes.has(routeId)) {
+        routes.set(routeId, {
+          route_id: routeId,
+          driver_code: row.driver_code,
+          date: row.route_date,
+          status: row.route_status,
+          stops: [],
+          updated_at: new Date().toISOString(),
+        });
+      }
+      const route = routes.get(routeId);
+      // Avoid duplicates
+      const alreadyLoaded = route.stops.some((s) => s.order_code === row.order_code);
+      if (!alreadyLoaded) {
+        route.stops.push({
+          order_code: row.order_code,
+          client_code: row.client_code,
+          pickup_address: row.pickup_address,
+          delivery_address: row.delivery_address,
+          pickup_lat: Number(row.pickup_lat),
+          pickup_lng: Number(row.pickup_lng),
+          delivery_lat: Number(row.latitude ?? row.delivery_lat),
+          delivery_lng: Number(row.longitude ?? row.delivery_lng),
+          weight_kg: Number(row.weight_kg),
+          status: row.stop_status === 'completed' ? 'delivered'
+                : row.stop_status === 'skipped'   ? 'failed'
+                : 'pending',
+          sequence: row.sequence_index,
+          distance_from_previous_km: 0,
+          estimated_arrival: row.eta ? new Date(row.eta).toISOString() : null,
+        });
+      }
+    }
+
+    console.log(`ROS startup: restored ${rows.length} stop(s) across ${routes.size} route(s) from DB.`);
+  } catch (err) {
+    console.error('ROS startup DB load failed (in-memory will be empty):', err.message);
+  }
+}
+
+app.listen(PORT, async () => {
   console.log(`ROS service listening on port ${PORT}`);
+  await loadRoutesFromDb();
   connectRabbitWithRetry();
 });

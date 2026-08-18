@@ -2,29 +2,79 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="SwiftTrack driver route and delivery web portal">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="SwiftTrack driver portal — manage your route, record proof of delivery, and get live dispatch updates.">
   <title>SwiftTrack Driver Portal</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#113e31">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="SwiftTrack">
+  <link rel="apple-touch-icon" href="icon-192.png">
+
   <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
-  <div id="toastRegion" class="toast-region" aria-live="polite"></div>
 
+  <!-- ── Toast notifications ───────────────────────────────────────────── -->
+  <div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="false"></div>
+
+  <!-- ── Notification permission banner ───────────────────────────────── -->
+  <div id="notifBanner" class="notif-banner hidden" role="alert">
+    <div class="notif-banner-content">
+      <span class="notif-banner-icon">🔔</span>
+      <div>
+        <strong>Enable push notifications</strong>
+        <p>Get alerted when new stops are added to your route.</p>
+      </div>
+    </div>
+    <div class="notif-banner-actions">
+      <button id="notifAllow" class="button primary small">Allow</button>
+      <button id="notifDismiss" class="button secondary small">Not now</button>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       LOGIN VIEW
+  ═════════════════════════════════════════════════════════════════════ -->
   <main id="loginView" class="login-view">
     <section class="login-visual">
-      <a class="brand light" href="#"><span class="brand-mark">S</span><span>SwiftTrack</span></a>
+      <a class="brand light" href="#">
+        <span class="brand-mark">S</span>
+        <span>SwiftTrack</span>
+      </a>
       <div class="visual-copy">
         <p class="eyebrow">Driver operations</p>
         <h1>Your route.<br><em>One clear view.</em></h1>
         <p>Follow the optimized manifest, record proof of delivery, and keep every shipment accountable.</p>
       </div>
-      <div class="visual-metric"><strong>Live</strong><span>Route coordination through SwiftTrack middleware</span></div>
+      <div class="visual-metric">
+        <strong>Live</strong>
+        <span>Route coordination through SwiftTrack middleware</span>
+      </div>
     </section>
+
     <section class="login-form-wrap">
       <form id="loginForm" class="login-card">
-        <div><p class="eyebrow green">Driver portal</p><h2>Start your route</h2><p class="muted">Sign in with your SwiftLogistics driver account.</p></div>
-        <label>Email address<input id="email" type="email" value="kasun@swiftlogistics.lk" autocomplete="email" required></label>
-        <label>Password<input id="password" type="password" value="password123" autocomplete="current-password" required></label>
+        <div>
+          <p class="eyebrow green">Driver portal</p>
+          <h2>Start your route</h2>
+          <p class="muted">Sign in with your SwiftLogistics driver account.</p>
+        </div>
+        <label>
+          Email address
+          <input id="email" type="email" value="kasun@swiftlogistics.lk" autocomplete="email" required>
+        </label>
+        <label>
+          Password
+          <input id="password" type="password" value="password123" autocomplete="current-password" required>
+        </label>
         <p id="loginError" class="form-error" role="alert"></p>
         <button class="button primary full" type="submit">Sign in <span>→</span></button>
         <p class="demo-note">Demo: kasun@swiftlogistics.lk / password123</p>
@@ -32,84 +82,222 @@
     </section>
   </main>
 
+  <!-- ════════════════════════════════════════════════════════════════════
+       APP SHELL
+  ═════════════════════════════════════════════════════════════════════ -->
   <div id="appView" class="app-shell hidden">
-    <aside class="sidebar">
-      <a class="brand" href="#"><span class="brand-mark">S</span><span>SwiftTrack</span></a>
+
+    <!-- ── Sidebar (desktop + tablet) ───────────────────────────────── -->
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="#">
+        <span class="brand-mark">S</span>
+        <span>SwiftTrack</span>
+      </a>
       <nav>
-        <button id="routeNav" class="nav-item active"><span>⌁</span> Today’s route</button>
-        <button id="completedNav" class="nav-item"><span>✓</span> Completed</button>
+        <button id="routeNav" class="nav-item active">
+          <span class="nav-icon">⌁</span> Today's route
+        </button>
+        <button id="completedNav" class="nav-item">
+          <span class="nav-icon">✓</span> Completed
+        </button>
       </nav>
       <div class="sidebar-bottom">
-        <div class="live-state"><i id="connectionDot"></i><span id="connectionText">Connecting…</span></div>
-        <button id="logoutButton" class="nav-item"><span>↪</span> Sign out</button>
+        <div class="live-state">
+          <i id="connectionDot"></i>
+          <span id="connectionText">Connecting…</span>
+        </div>
+        <button id="logoutButton" class="nav-item">
+          <span class="nav-icon">↪</span> Sign out
+        </button>
       </div>
     </aside>
 
+    <!-- ── Sidebar overlay (mobile) ─────────────────────────────────── -->
+    <div id="sidebarOverlay" class="sidebar-overlay hidden"></div>
+
+    <!-- ── Main workspace ───────────────────────────────────────────── -->
     <main class="workspace">
       <header class="topbar">
-        <button id="menuButton" class="icon-button menu-button" aria-label="Open menu">☰</button>
-        <div><p class="eyebrow green">Dispatch workspace</p><h2 id="routeDate">Today’s route</h2></div>
-        <div class="top-actions"><button id="refreshButton" class="icon-button" aria-label="Refresh route">↻</button><div id="driverAvatar" class="avatar">KP</div></div>
+        <button id="menuButton" class="icon-button menu-button" aria-label="Open menu" aria-expanded="false" aria-controls="sidebar">☰</button>
+        <div class="topbar-title">
+          <p class="eyebrow green">Dispatch workspace</p>
+          <h2 id="routeDate">Today's route</h2>
+        </div>
+        <div class="top-actions">
+          <button id="refreshButton" class="icon-button" aria-label="Refresh route" title="Refresh route">↻</button>
+          <div id="driverAvatar" class="avatar" aria-hidden="true">KP</div>
+        </div>
       </header>
 
       <section class="content">
+        <!-- Welcome row -->
         <div class="welcome-row">
-          <div><h1>Ready, <span id="driverGreeting">driver</span>?</h1><p class="muted"><span id="vehicleNumber">Vehicle</span> · <span id="routeId">Awaiting route</span></p></div>
-          <div class="route-state"><i></i><span>Route synchronized</span></div>
+          <div>
+            <h1>Ready, <span id="driverGreeting">driver</span>?</h1>
+            <p class="muted">
+              <span id="vehicleNumber">Vehicle</span>
+              · <span id="routeId">Awaiting route</span>
+            </p>
+          </div>
+          <div class="route-state">
+            <i></i>
+            <span>Route synchronized</span>
+          </div>
         </div>
 
+        <!-- Stats -->
         <section class="stats" aria-label="Route summary">
-          <article><span class="stat-symbol charcoal">⌁</span><div><strong id="totalStops">0</strong><p>Total stops</p></div></article>
-          <article><span class="stat-symbol amber">◷</span><div><strong id="pendingStops">0</strong><p>Remaining</p></div></article>
-          <article><span class="stat-symbol green-bg">✓</span><div><strong id="completedStops">0</strong><p>Completed</p></div></article>
-          <article><span class="stat-symbol red-bg">!</span><div><strong id="failedStops">0</strong><p>Failed</p></div></article>
+          <article>
+            <span class="stat-symbol charcoal">⌁</span>
+            <div><strong id="totalStops">0</strong><p>Total stops</p></div>
+          </article>
+          <article>
+            <span class="stat-symbol amber">◷</span>
+            <div><strong id="pendingStops">0</strong><p>Remaining</p></div>
+          </article>
+          <article>
+            <span class="stat-symbol green-bg">✓</span>
+            <div><strong id="completedStops">0</strong><p>Completed</p></div>
+          </article>
+          <article>
+            <span class="stat-symbol red-bg">!</span>
+            <div><strong id="failedStops">0</strong><p>Failed</p></div>
+          </article>
         </section>
 
+        <!-- Route section (manifest + day card) -->
         <section id="routeSection" class="route-layout">
           <div class="panel manifest-panel">
-            <div class="panel-head"><div><p class="eyebrow green">Optimized manifest</p><h3>Delivery stops</h3></div><span id="routeBadge" class="route-badge">0 stops</span></div>
-            <div id="stopsLoading" class="loading"><i></i> Loading today’s route…</div>
-            <div id="stopsEmpty" class="empty hidden"><span>⌁</span><h3>No stops assigned</h3><p>New assignments will appear here automatically.</p></div>
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow green">Optimized manifest</p>
+                <h3>Delivery stops</h3>
+              </div>
+              <span id="routeBadge" class="route-badge">0 stops</span>
+            </div>
+            <div id="stopsLoading" class="loading"><i></i> Loading today's route…</div>
+            <div id="stopsEmpty" class="empty hidden">
+              <span>⌁</span>
+              <h3>No stops assigned</h3>
+              <p>New assignments will appear here automatically.</p>
+            </div>
             <div id="stopsList" class="stops-list"></div>
           </div>
 
           <aside class="day-card">
             <p class="eyebrow">Shift overview</p>
             <h3 id="dayName">Monday</h3>
-            <p id="fullDate">17 August 2026</p>
-            <div class="progress-ring"><svg viewBox="0 0 120 120"><circle class="track" cx="60" cy="60" r="48"></circle><circle id="progressCircle" class="value" cx="60" cy="60" r="48"></circle></svg><div><strong id="progressValue">0%</strong><span>complete</span></div></div>
-            <div class="day-note"><span>i</span><p>Stops are ordered by the ROS nearest-neighbour route optimizer.</p></div>
+            <p id="fullDate">18 August 2026</p>
+            <div class="progress-ring">
+              <svg viewBox="0 0 120 120">
+                <circle class="track" cx="60" cy="60" r="48"></circle>
+                <circle id="progressCircle" class="value" cx="60" cy="60" r="48"></circle>
+              </svg>
+              <div>
+                <strong id="progressValue">0%</strong>
+                <span>complete</span>
+              </div>
+            </div>
+            <div class="day-note">
+              <span>i</span>
+              <p>Stops are ordered by the ROS nearest-neighbour route optimizer.</p>
+            </div>
           </aside>
         </section>
 
+        <!-- Completed section -->
         <section id="completedSection" class="panel completed-panel">
-          <div class="panel-head"><div><p class="eyebrow green">Delivery record</p><h3>Finished stops</h3></div></div>
-          <div id="completedList" class="completed-list"><p class="empty-copy">No stops completed yet.</p></div>
+          <div class="panel-head">
+            <div>
+              <p class="eyebrow green">Delivery record</p>
+              <h3>Finished stops</h3>
+            </div>
+          </div>
+          <div id="completedList" class="completed-list">
+            <p class="empty-copy">No stops completed yet.</p>
+          </div>
         </section>
-      </section>
-    </main>
-  </div>
+      </section><!-- /content -->
+    </main><!-- /workspace -->
 
-  <dialog id="deliveryDialog">
+    <!-- ── Bottom navigation bar (mobile only) ──────────────────────── -->
+    <nav class="bottom-nav" aria-label="Mobile navigation">
+      <button id="bottomRouteNav" class="bottom-nav-item active" aria-current="page">
+        <span class="bottom-nav-icon">⌁</span>
+        <span>Route</span>
+      </button>
+      <button id="bottomCompletedNav" class="bottom-nav-item">
+        <span class="bottom-nav-icon">✓</span>
+        <span>Completed</span>
+      </button>
+      <button id="bottomLogoutNav" class="bottom-nav-item">
+        <span class="bottom-nav-icon">↪</span>
+        <span>Sign out</span>
+      </button>
+    </nav>
+
+  </div><!-- /app-shell -->
+
+  <!-- ════════════════════════════════════════════════════════════════════
+       DELIVERY DIALOG
+  ═════════════════════════════════════════════════════════════════════ -->
+  <dialog id="deliveryDialog" aria-labelledby="deliveryTitle">
     <form id="deliveryForm">
-      <div class="dialog-head"><div><p class="eyebrow green">Proof of delivery</p><h2 id="deliveryTitle">Complete stop</h2></div><button id="closeDialog" type="button" class="close-button" aria-label="Close">×</button></div>
+      <div class="dialog-head">
+        <div>
+          <p class="eyebrow green">Proof of delivery</p>
+          <h2 id="deliveryTitle">Complete stop</h2>
+        </div>
+        <button id="closeDialog" type="button" class="close-button" aria-label="Close dialog">×</button>
+      </div>
+
       <div id="selectedStopSummary" class="selected-stop"></div>
-      <div class="mode-switch" role="group" aria-label="Delivery outcome"><button type="button" data-mode="delivered" class="active">✓ Delivered</button><button type="button" data-mode="failed">! Failed</button></div>
 
+      <div class="mode-switch" role="group" aria-label="Delivery outcome">
+        <button type="button" data-mode="delivered" class="active">✓ Delivered</button>
+        <button type="button" data-mode="failed">! Failed</button>
+      </div>
+
+      <!-- Delivered fields -->
       <div id="deliveredFields" class="form-section">
-        <label>Recipient name<input name="recipient_name" placeholder="Name of person receiving package"></label>
-        <label>Recipient signature
-          <canvas id="signatureCanvas" aria-label="Draw recipient signature"></canvas>
+        <label>
+          Recipient name
+          <input name="recipient_name" placeholder="Name of person receiving package" autocomplete="off">
         </label>
-        <div class="signature-actions"><span>Sign inside the box using mouse or touch.</span><button id="clearSignature" type="button">Clear</button></div>
+        <label>
+          Recipient signature
+          <canvas id="signatureCanvas" aria-label="Draw recipient signature here"></canvas>
+        </label>
+        <div class="signature-actions">
+          <span>Sign inside the box using finger or mouse.</span>
+          <button id="clearSignature" type="button">Clear</button>
+        </div>
       </div>
 
+      <!-- Failed fields -->
       <div id="failedFields" class="form-section hidden">
-        <label>Failure reason<select name="reason"><option value="">Select a reason</option><option value="recipient_unavailable">Recipient unavailable</option><option value="wrong_address">Wrong address</option><option value="refused">Delivery refused</option><option value="access_restricted">Access restricted</option></select></label>
+        <label>
+          Failure reason
+          <select name="reason">
+            <option value="">Select a reason</option>
+            <option value="recipient_unavailable">Recipient unavailable</option>
+            <option value="wrong_address">Wrong address</option>
+            <option value="refused">Delivery refused</option>
+            <option value="access_restricted">Access restricted</option>
+          </select>
+        </label>
       </div>
-      <label>Driver notes<textarea name="notes" rows="3" placeholder="Optional notes about this stop"></textarea></label>
+
+      <label>
+        Driver notes
+        <textarea name="notes" rows="3" placeholder="Optional notes about this stop"></textarea>
+      </label>
+
       <p id="deliveryError" class="form-error" role="alert"></p>
-      <div class="dialog-actions"><button id="cancelDelivery" type="button" class="button secondary">Cancel</button><button class="button primary" type="submit">Submit update</button></div>
+      <div class="dialog-actions">
+        <button id="cancelDelivery" type="button" class="button secondary">Cancel</button>
+        <button class="button primary" type="submit">Submit update</button>
+      </div>
     </form>
   </dialog>
 

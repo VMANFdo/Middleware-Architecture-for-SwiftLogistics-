@@ -204,13 +204,13 @@ INSERT INTO drivers (driver_code, name, email, password_hash, phone, vehicle_id,
  '+94 70 333 4444', 'WP-NB-5678', 'Motorcycle', 'WP-NB-5678', 'off_duty')
 ON CONFLICT (driver_code) DO NOTHING;
 
--- A couple of demo orders so Phase 2/3 devs have data to work against immediately
+-- Demo orders so devs have data to work against immediately
 INSERT INTO orders (order_code, client_id, pickup_address, delivery_address,
                     pickup_lat, pickup_lng, delivery_lat, delivery_lng,
                     recipient_name, recipient_phone, priority, weight_kg, status)
 SELECT 'ORD-0001', id, '45 Galle Road, Colombo 03', '10 Havelock Road, Colombo 05',
        6.92710000, 79.86120000, 6.89160000, 79.85670000,
-       'Sanduni Silva', '+94 76 555 1111', 'normal', 2.4, 'pending'
+       'Sanduni Silva', '+94 76 555 1111', 'normal', 2.4, 'assigned'
 FROM clients WHERE client_code = 'CLT001'
 ON CONFLICT (order_code) DO NOTHING;
 
@@ -219,6 +219,68 @@ INSERT INTO orders (order_code, client_id, pickup_address, delivery_address,
                     recipient_name, recipient_phone, priority, weight_kg, status)
 SELECT 'ORD-0002', id, '12 Peradeniya Road, Kandy', '5 Lake Drive, Kandy',
        7.29060000, 80.63370000, 7.29320000, 80.63500000,
-       'Chamara Bandara', '+94 76 555 2222', 'high', 5.1, 'pending'
+       'Chamara Bandara', '+94 76 555 2222', 'high', 5.1, 'assigned'
 FROM clients WHERE client_code = 'CLT002'
 ON CONFLICT (order_code) DO NOTHING;
+
+INSERT INTO orders (order_code, client_id, pickup_address, delivery_address,
+                    pickup_lat, pickup_lng, delivery_lat, delivery_lng,
+                    recipient_name, recipient_phone, priority, weight_kg, status)
+SELECT 'ORD-0003', id, '18 Main Street, Galle', '22 Wakwella Road, Galle',
+       6.03520000, 80.21680000, 6.02760000, 80.21990000,
+       'Priya Jayawardena', '+94 76 555 3333', 'urgent', 1.2, 'assigned'
+FROM clients WHERE client_code = 'CLT003'
+ON CONFLICT (order_code) DO NOTHING;
+
+-- ─── Seed today's route for DRV001 ──────────────────────────────────
+-- Uses CURRENT_DATE so it always represents "today's" route regardless of when
+-- the DB is initialised. ON CONFLICT guards make this idempotent.
+INSERT INTO routes (driver_id, route_date, status)
+SELECT d.id, CURRENT_DATE, 'planned'
+FROM drivers d WHERE d.driver_code = 'DRV001'
+ON CONFLICT (driver_id, route_date) DO NOTHING;
+
+-- Stop 1 — ORD-0001: Colombo 03 → Colombo 05 (3.7 km)
+INSERT INTO route_stops (route_id, order_id, sequence_index, latitude, longitude, eta, stop_status)
+SELECT
+    r.id,
+    o.id,
+    1,
+    6.89160000,
+    79.85670000,
+    (CURRENT_DATE + INTERVAL '8 hours 30 minutes')::TIMESTAMPTZ,
+    'pending'
+FROM routes r
+JOIN drivers d ON d.id = r.driver_id AND d.driver_code = 'DRV001' AND r.route_date = CURRENT_DATE
+JOIN orders o ON o.order_code = 'ORD-0001'
+ON CONFLICT (route_id, sequence_index) DO NOTHING;
+
+-- Stop 2 — ORD-0002: Kandy (7.3 km)
+INSERT INTO route_stops (route_id, order_id, sequence_index, latitude, longitude, eta, stop_status)
+SELECT
+    r.id,
+    o.id,
+    2,
+    7.29320000,
+    80.63500000,
+    (CURRENT_DATE + INTERVAL '9 hours')::TIMESTAMPTZ,
+    'pending'
+FROM routes r
+JOIN drivers d ON d.id = r.driver_id AND d.driver_code = 'DRV001' AND r.route_date = CURRENT_DATE
+JOIN orders o ON o.order_code = 'ORD-0002'
+ON CONFLICT (route_id, sequence_index) DO NOTHING;
+
+-- Stop 3 — ORD-0003: Galle (4.2 km from previous)
+INSERT INTO route_stops (route_id, order_id, sequence_index, latitude, longitude, eta, stop_status)
+SELECT
+    r.id,
+    o.id,
+    3,
+    6.02760000,
+    80.21990000,
+    (CURRENT_DATE + INTERVAL '10 hours')::TIMESTAMPTZ,
+    'pending'
+FROM routes r
+JOIN drivers d ON d.id = r.driver_id AND d.driver_code = 'DRV001' AND r.route_date = CURRENT_DATE
+JOIN orders o ON o.order_code = 'ORD-0003'
+ON CONFLICT (route_id, sequence_index) DO NOTHING;
