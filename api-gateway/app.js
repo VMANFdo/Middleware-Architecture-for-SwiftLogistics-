@@ -282,6 +282,65 @@ async function logSagaStep(orderCode, sagaStep, status, payload = {}, errorMessa
 
 async function handleSagaEvent(eventType, eventData) {
   const data = eventData.data || eventData;
+
+  // ── ROS publishes the entire route object (data.stops[]), not a single
+  //    order_code at the top level. Handle it by iterating the stops array
+  //    and logging ROS_ASSIGN for every stop that has an active saga entry.
+  if (eventType === 'ROS_PROCESSING_COMPLETE') {
+    const stops = Array.isArray(data.stops) ? data.stops : [];
+    for (const stop of stops) {
+      const stopCode = stop.order_code || stop.order_id;
+      if (!stopCode) continue;
+      if (!activeSagas.has(stopCode)) continue;          // no saga started yet
+      const saga = activeSagas.get(stopCode);
+      if (saga.steps.ROS_ASSIGN === 'completed') continue; // already logged
+
+      saga.steps.ROS_ASSIGN = 'completed';
+      await logSagaStep(stopCode, 'ROS_ASSIGN', 'completed', stop);
+
+      dispatchWebSocketMessage({
+        target: 'client',
+        recipientId: saga.client_code,
+        eventType: 'ROS_PROCESSING_COMPLETE',
+        orderCode: stopCode,
+        payload: {
+          status: 'assigned',
+          message: `Order ${stopCode} route optimized and assigned by ROS.`,
+          data: stop,
+        },
+      });
+      dispatchWebSocketMessage({
+        target: 'driver',
+        eventType: 'ROUTE_UPDATED',
+        orderCode: stopCode,
+        payload: { message: `Route updated for order ${stopCode}.`, data: stop },
+      });
+
+      // Saga completion check for this stop
+      if (
+        saga.steps.CMS_CREATE === 'completed' &&
+        saga.steps.ROS_ASSIGN === 'completed' &&
+        saga.steps.WMS_ALLOCATE === 'completed' &&
+        saga.status !== 'completed'
+      ) {
+        saga.status = 'completed';
+        await logSagaStep(stopCode, 'SAGA_COMPLETE', 'completed', { saga });
+        dispatchWebSocketMessage({
+          target: 'client',
+          recipientId: saga.client_code,
+          eventType: 'SAGA_TRANSACTION_SUCCESS',
+          orderCode: stopCode,
+          payload: {
+            status: 'ready',
+            message: `Distributed transaction for ${stopCode} successfully completed across CMS, ROS, and WMS.`,
+          },
+        });
+      }
+    }
+    return; // ROS event fully handled — skip the generic flow below
+  }
+
+  // ── All other events carry a single top-level order_code ──────────────
   const orderCode = data.order_code || data.order_id || eventData.order_code;
   if (!orderCode) return;
 
@@ -833,9 +892,9 @@ app.post('/api/driver/delivery/:orderCode', authenticateToken, requireRole('driv
     { timeout: DOWNSTREAM_TIMEOUT_MS },
   );
   const route = routeResponse.data.route || routeResponse.data;
-  const stop = route.stops?.find((item) => (
-    item.order_code || item.order_id
-  ) === req.params.orderCode);
+  const stop = route.stops?.find(
+    (item) => item.order_code === req.params.orderCode || item.order_id === req.params.orderCode
+  );
 
   if (!stop) {
     return res.status(404).json({ success: false, message: 'Order is not assigned to this driver' });
@@ -860,14 +919,29 @@ app.post('/api/driver/delivery/:orderCode', authenticateToken, requireRole('driv
     { timeout: DOWNSTREAM_TIMEOUT_MS },
   );
 
+  const deliveredOrder = await getOrderIdByCode(req.params.orderCode);
+  const deliveredClientCode = deliveredOrder ? await getClientCodeById(deliveredOrder.client_id) : null;
+
   dispatchWebSocketMessage({
-    target: 'broadcast',
+    target: 'client',
+    recipientId: deliveredClientCode,
     eventType: 'DELIVERY_COMPLETED',
     orderCode: req.params.orderCode,
     payload: {
       status: deliveryStatus,
       driver_code: req.auth.sub,
       message: `Delivery ${deliveryStatus} for order ${req.params.orderCode}`,
+    },
+  });
+
+  dispatchWebSocketMessage({
+    target: 'driver',
+    recipientId: req.auth.sub,
+    eventType: 'DELIVERY_COMPLETED',
+    orderCode: req.params.orderCode,
+    payload: {
+      status: deliveryStatus,
+      message: `Delivery ${deliveryStatus} confirmed for order ${req.params.orderCode}`,
     },
   });
 
