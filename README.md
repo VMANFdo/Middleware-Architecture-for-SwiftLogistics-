@@ -163,7 +163,7 @@ The same command also starts the responsive Driver Web Portal.
 | 2 | CMS / ROS / WMS mock services | M1 / M2 / M3 |  Not started |
 | 3 | Gateway protocol bridging (SOAP, TCP) | M4 |  Not started |
 | 4 | Frontend (Client Portal, Driver Web Portal) | M5 / M6 |  Complete |
-| 5 | Saga coordinator, WebSocket dispatch | M4 |  Not started |
+| 5 | Saga coordinator, WebSocket dispatch | M4 |  Complete |
 | 6 | Integration & load testing | All |  Not started |
 | 7 | Documentation & screencast | All |  Not started |
 
