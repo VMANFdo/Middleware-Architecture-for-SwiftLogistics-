@@ -25,9 +25,9 @@
 - [x] Write HTML Canvas script to capture handwritten signature PODs - **Member 6**
 
 ## Phase 5: Saga Transaction Coordinator & WebSockets (Days 21–24)
-- [ ] Program Gateway WebSocket server logic to manage active client/driver communication maps - **Member 4**
-- [ ] Code Saga transaction tracking engine in Gateway to record distributed transaction logs - **Member 4**
-- [ ] Setup RabbitMQ event consumers in Gateway to trigger live WebSocket notifications - **Member 4**
+- [x] Program Gateway WebSocket server logic to manage active client/driver communication maps - **Member 4**
+- [x] Code Saga transaction tracking engine in Gateway to record distributed transaction logs - **Member 4**
+- [x] Setup RabbitMQ event consumers in Gateway to trigger live WebSocket notifications - **Member 4**
 
 ## Phase 6: Integration, Testing & Bug Fixing (Days 25–27)
 - [ ] Execute full system container build with Docker Compose - **All Members**
