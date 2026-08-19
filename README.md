@@ -168,11 +168,3 @@ The same command also starts the responsive Driver Web Portal.
 | 7 | Documentation & screencast | All |  Not started |
 
 
-## 8. Documentation
-
-- [`DOCKER-SETUP.md`](./plans/DOCKER-SETUP.md) - Docker install + troubleshooting guide (Windows/Ubuntu)
-- [`system-plan.md`](./plans/system-plan.md) - phase-by-phase implementation plan
-- [`implementation_plan.md`](./plans/implementation_plan.md)
-- [`task-list.md`](./plans/task-list.md)
-- [`work-distribution.md`](./plans/work-distribution.md)
-- [`MA-Assignment-4-2026.pdf`](./plans/MA-Assignment-4-2026.pdf) - original brief
