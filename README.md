@@ -1,39 +1,24 @@
-# SwiftTrack - Middleware Architecture for "SwiftLogistics"
+# SwiftTrack — Middleware Architecture for SwiftLogistics
 
-A prototype middleware platform that integrates three heterogeneous backend
-systems.
+A fully-integrated middleware platform bridging three heterogeneous backend systems for SwiftLogistics, built as part of an IS3208 Middleware Architecture assignment. The platform handles real-time order tracking, route optimisation, and warehouse management via a unified API Gateway — with no order ever lost even when a downstream service is temporarily unavailable.
 
-## 1. Business Scenario
-
-Swift Logistics needs to bridge three systems that speak different
-protocols:
-
-| System | Role | Protocol |
-|---|---|---|
-| **CMS** - Client Management System | Legacy on-prem system: client contracts, billing, order intake | SOAP / XML |
-| **ROS** - Route Optimisation System | Third-party cloud service: generates efficient delivery routes | REST / JSON |
-| **WMS** - Warehouse Management System | Tracks packages from receipt to dispatch | Proprietary TCP/IP messaging |
-
-SwiftTrack sits in front of all three and gives clients a web portal and
-drivers a mobile app, with real-time order tracking and no order ever lost
-even if a backend system is temporarily down.
-
-## 2. Architecture Overview
+## Architecture Overview
 
 ```
                      ┌─────────────────┐          ┌──────────────────┐
                      │  Client Portal  │          │  Driver Portal   │
-                     │     :8080       │          │     :8081        │
+                     │  (PWA) :8080    │          │  (PWA) :8081     │
                      └────────┬────────┘          └─────────┬────────┘
-                              │            HTTP + WebSocket │
+                              │            HTTP + WebSocket  │
                               └──────────────┬──────────────┘
                                              ▼
                                    ┌─────────────────────┐
-                                   │    API Gateway:3000 │
-                                   │ REST↔SOAP/REST↔TCP  │
-                                   │  Saga Coordinator   │
-                                   │  WebSocket Dispatch │
-                                   └───┬───────┬───────┬─┘
+                                   │   API Gateway :3000  │
+                                   │  REST ↔ SOAP/XML     │
+                                   │  REST ↔ TCP          │
+                                   │  Saga Coordinator    │
+                                   │  WebSocket Dispatch  │
+                                   └───┬───────┬───────┬──┘
                         SOAP/XML       │       │       │   TCP (:9000)
                     ┌──────────────────┘       │       └──────────────────┐
                     ▼                          │ REST                     ▼
@@ -44,127 +29,227 @@ even if a backend system is temporarily down.
           └─────────┬────────┘        │  Node.js Express │      └─────────┬────────┘
                     │                 └─────────┬────────┘                │
                     └──────────────┬────────────┴───────────────────┬─────┘
-                                   ▼          publish/subscribe     ▼
-                          ┌───────────────────────────────────────────┐
-                          │              RabbitMQ (:5672)             │
-                          │           exchange: order_events          │
-                          └───────────────────────────────────────────┘
+                                   ▼        publish / subscribe      ▼
+                          ┌────────────────────────────────────────────┐
+                          │             RabbitMQ (:5672)               │
+                          │          exchange: order_events            │
+                          └────────────────────────────────────────────┘
                                               │
                                               ▼
                                    ┌─────────────────────┐
-                                   │     PostgreSQL      │
-                                   │        :5432        │
+                                   │     PostgreSQL       │
+                                   │        :5432         │
                                    └─────────────────────┘
 ```
 
-**Integration patterns used:** Gateway, Channel Adapter (SOAP/TCP↔REST),
-Publish-Subscribe, Saga (distributed transaction), Canonical Data Model.
-Full rationale is in [`system-plan.md`](./system-plan.md) and the solution
-documentation.
+**Integration patterns:** Gateway, Channel Adapter (SOAP/XML ↔ REST, TCP ↔ REST), Publish-Subscribe, Saga (distributed transaction coordinator), Canonical Data Model.
 
-## 3. Project Structure
+See [`ARCHITECTURE.md`](./ARCHITECTURE.md) for a full explanation of each pattern and the data flow.
+
+---
+
+## Project Structure
 
 ```
-Middleware-Architecture-for-SwiftLogistics-/
+SwiftTrack/
 │
 ├── database/
-│   └── init.sql                # Schema + seed data (Phase 1)
+│   └── init.sql              # PostgreSQL schema + seed data
 │
-├── api-gateway/                 # Central gateway (Phase 1 scaffold → Phase 3/5)
+├── api-gateway/              # Central gateway — protocol bridging, Saga, WebSockets
 │   ├── app.js
 │   ├── package.json
 │   └── Dockerfile
 │
-├── cms-service/                 # SOAP/REST hybrid, Flask + Spyne (Phase 2 - M1)
-├── ros-service/                 # Route optimiser, Node Express (Phase 2 - M2)
-├── wms-service/                 # TCP socket server, Flask (Phase 2 - M3)
-├── client-portal/                # Web dashboard (Phase 4 - M5)
-├── driver-app/                  # Responsive Driver Web Portal (Phase 4 - M6)
+├── cms-service/              # Client Management System — SOAP/REST hybrid (Flask + Spyne)
+│   ├── app.py
+│   ├── requirements.txt
+│   └── Dockerfile
 │
-├── docker-compose.yml           # Orchestrates all 7 services
-├── MA-Assignment-4-2026.pdf     # Original assignment brief
-├── system-plan.md               # Phase-by-phase implementation plan
-├── implementation_plan.md
-├── task-list.md
-└── work-distribution.md
+├── ros-service/              # Route Optimisation System — REST + RabbitMQ (Node.js)
+│   ├── app.js
+│   ├── package.json
+│   └── Dockerfile
+│
+├── wms-service/              # Warehouse Management System — REST + proprietary TCP (Flask)
+│   ├── app.py
+│   ├── requirements.txt
+│   └── Dockerfile
+│
+├── client-portal/            # Client web dashboard (Vanilla JS PWA, served by Nginx)
+│   ├── index.html
+│   ├── app.js
+│   ├── styles.css
+│   └── Dockerfile
+│
+├── driver-app/               # Driver mobile-first PWA (Vanilla JS, served by Nginx)
+│   ├── index.html
+│   ├── app.js
+│   ├── styles.css
+│   ├── sw.js                 # Service Worker (offline support)
+│   ├── manifest.json         # PWA manifest (Add to Home Screen)
+│   └── Dockerfile
+│
+├── docker-compose.yml        # Orchestrates all 7 services
+├── .env.example              # Environment variable reference
+├── ARCHITECTURE.md           # Integration pattern deep-dive
+└── README.md
 ```
 
-## 4. Getting Started
+---
+
+## Quick Start
 
 ### Prerequisites
-- Docker Desktop
-- Node.js 20+ (for local, non-container development)
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or Docker Engine + Compose v2 on Linux)
 - Git
 
-Set up Docker. \
-See [`DOCKER-SETUP.md`](./plans/DOCKER-SETUP.md) for full install instructions (Windows + Ubuntu) and troubleshooting.
-
-### Run infrastructure + gateway
+### Run the full stack
 
 ```bash
 git clone https://github.com/VMANFdo/Middleware-Architecture-for-SwiftLogistics-.git
 cd Middleware-Architecture-for-SwiftLogistics-
 
-# Bring up database, broker, and the gateway
-docker compose up -d postgres rabbitmq api-gateway
+docker compose up --build
 ```
 
-Check everything is healthy:
+All seven services start, including infrastructure (PostgreSQL + RabbitMQ), the three backend systems, the API Gateway, the Client Portal, and the Driver Portal.
+
+> The first `--build` may take a minute to pull base images.
+
+### Verify everything is healthy
 
 ```bash
 docker compose ps
 curl http://localhost:3000/health
 ```
 
-Bring up the currently implemented stack (infrastructure, backend services,
-gateway, and Client Portal):
+### Optional port overrides
+
+If ports `3000`, `8080`, or `8081` are already in use on your machine, copy `.env.example` to `.env` and adjust the host-side port overrides before starting:
 
 ```bash
+cp .env.example .env
+# edit .env as needed
 docker compose up --build
 ```
 
-If ports 3000 or 8080 are already in use, copy `.env.example` to `.env`
-before starting. Its host-port overrides do not affect communication between
-containers.
+Container-to-container communication always uses the internal ports — only the host-side bindings change.
 
-The same command also starts the responsive Driver Web Portal.
+---
 
-## 5. Service Port Map
+## Service Port Map
 
 | Port | Service | Protocol |
 |---|---|---|
-| 3000 | API Gateway | HTTP + WebSocket |
+| 3000 | API Gateway | HTTP + WebSocket (`/ws`) |
 | 5432 | PostgreSQL | Postgres |
 | 5672 / 15672 | RabbitMQ (AMQP / Management UI) | AMQP / HTTP |
-| 8001 | CMS Service | SOAP + REST |
+| 8001 | CMS Service | SOAP (`/soap`) + REST |
 | 8002 | ROS Service | REST |
 | 8003 / 9000 | WMS Service (REST / proprietary TCP) | REST / TCP |
 | 8080 | Client Portal | HTTP |
-| 8081 | Driver Web Portal | HTTP |
+| 8081 | Driver Portal (PWA) | HTTP |
 
-## 6. Technology Stack
+---
+
+## Technology Stack
 
 | Layer | Technology |
 |---|---|
-| API Gateway | Node.js, Express |
-| CMS Service | Python, Flask, Spyne (SOAP) |
-| ROS Service | Node.js, Express |
-| WMS Service | Python, Flask, raw TCP sockets |
-| Message Broker | RabbitMQ |
-| Database | PostgreSQL |
-| Real-time | WebSockets |
+| API Gateway | Node.js 20, Express, ws, amqplib, axios, jsonwebtoken |
+| CMS Service | Python 3.12, Flask, Spyne (SOAP/XML), psycopg2, pika, bcrypt |
+| ROS Service | Node.js 20, Express, amqplib, pg |
+| WMS Service | Python 3.12, Flask, raw TCP sockets, psycopg2, pika |
+| Message Broker | RabbitMQ 3 (fanout exchanges: `order_events`, `route_events`, `wms_events`) |
+| Database | PostgreSQL 16 |
+| Real-time | WebSockets (broadcast + targeted dispatch) |
+| Frontends | Vanilla HTML/CSS/JS, Nginx, PWA (Service Worker + Web App Manifest) |
 | Orchestration | Docker Compose |
 
-## 7. Team & Progress
+---
 
-| Phase | Scope | Owner(s) | Status |
+## Demo Credentials
+
+All seeded accounts share the password **`password123`**.
+
+| Role | Email | Notes |
+|---|---|---|
+| Client | `techmart@example.com` | TechMart Online (premium) |
+| Client | `fashionhub@example.com` | Fashion Hub (standard) |
+| Client | `homegoods@example.com` | HomeGoods Lanka (enterprise) |
+| Driver | `kasun@swiftlogistics.lk` | Vehicle WP-KA-1234 |
+| Driver | `nimal@swiftlogistics.lk` | Vehicle WP-NB-5678 |
+
+---
+
+## API Reference
+
+All routes except `/health` and auth endpoints require a `Bearer` JWT token in the `Authorization` header.
+
+### Authentication
+
+| Method | Path | Auth | Description |
 |---|---|---|---|
-| 1 | DB schema, Docker Compose, Gateway scaffold | - |  Complete |
-| 2 | CMS / ROS / WMS mock services | M1 / M2 / M3 |  Not started |
-| 3 | Gateway protocol bridging (SOAP, TCP) | M4 |  Not started |
-| 4 | Frontend (Client Portal, Driver Web Portal) | M5 / M6 |  Complete |
-| 5 | Saga coordinator, WebSocket dispatch | M4 |  Complete |
-| 6 | Integration & load testing | All |  Not started |
-| 7 | Documentation & screencast | All |  Not started |
+| `POST` | `/api/auth/client/login` | None | Authenticate a client (proxied to CMS SOAP) |
+| `POST` | `/api/auth/driver/login` | None | Authenticate a driver |
+| `GET` | `/api/auth/me` | Any | Return current user info from token |
 
+### Orders
 
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `POST` | `/api/orders` | Client | Create a new order (triggers full Saga) |
+| `GET` | `/api/orders` | Client | List all orders for the authenticated client |
+| `GET` | `/api/orders/:orderCode` | Any | Fetch a single order with package + route + Saga logs |
+
+### Packages (WMS — via TCP adapter)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/packages/scan/:barcode` | Driver | Look up a package by barcode |
+| `GET` | `/api/packages/order/:orderCode` | Client, Driver | Look up a package by order code |
+| `PUT` | `/api/packages/status` | Driver | Update warehouse package status |
+
+### Driver & Routes (ROS proxy)
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/driver/route/today` | Driver | Fetch today's optimised route for the authenticated driver |
+| `POST` | `/api/driver/delivery/:orderCode` | Driver | Submit delivery proof (triggers WebSocket dispatch) |
+| `GET` | `/api/routes` | Driver | List all routes |
+| `PUT` | `/api/routes/:routeId/stops/:orderCode` | Driver | Update a route stop status |
+
+### Saga / Distributed Transactions
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/api/saga/transactions` | Any | List recent Saga steps from the transaction log |
+| `GET` | `/api/saga/transactions/:orderCode` | Any | Fetch Saga history for a specific order |
+| `POST` | `/api/saga/simulate-failure` | Any | Trigger a simulated Saga compensation (for testing) |
+
+### WebSocket (`ws://localhost:3000/ws`)
+
+After connecting, send a JSON registration message to receive targeted events:
+
+```json
+{ "type": "register_client", "client_id": "CLT001" }
+{ "type": "register_driver", "driver_id": "DRV001" }
+```
+
+**Inbound event types:** `ORDER_CREATED`, `ROS_PROCESSING_COMPLETE`, `WMS_PROCESSING_COMPLETE`, `SAGA_TRANSACTION_SUCCESS`, `SAGA_COMPENSATED`, `DELIVERY_COMPLETED`, `PACKAGE_STATUS_UPDATED`, `ROUTE_UPDATED`, `NEW_ORDER_AVAILABLE`.
+
+---
+
+## Implementation Status
+
+| Phase | Scope | Status |
+|---|---|---|
+| 1 | PostgreSQL schema, Docker Compose, API Gateway scaffold | ✅ Complete |
+| 2 | CMS (SOAP/REST), ROS (REST + route optimiser), WMS (REST + TCP) | ✅ Complete |
+| 3 | Gateway protocol bridging — SOAP/XML adapter, TCP adapter | ✅ Complete |
+| 4 | Client Portal (web dashboard), Driver Portal (mobile PWA) | ✅ Complete |
+| 5 | Saga coordinator, RabbitMQ pub/sub, WebSocket real-time dispatch | ✅ Complete |
+| 6 | Integration testing & load testing | 🔄 In progress |
+| 7 | Final documentation & screencast | ✅ Complete |
