@@ -14,6 +14,13 @@ app.use(express.json());
 
 const pool = new Pool({ connectionString: DATABASE_URL });
 
+// pg emits 'error' on the pool for failures on idle clients; without a
+// listener that is an uncaught exception and would kill the ROS service.
+pool.on('error', (err) => {
+  console.error('Unexpected idle Postgres client error:', err.message);
+});
+
+
 const vehicles = [
   {
     driver_code: 'DRV001',
@@ -453,8 +460,30 @@ async function loadRoutesFromDb() {
   }
 }
 
-app.listen(PORT, async () => {
-  console.log(`ROS service listening on port ${PORT}`);
-  await loadRoutesFromDb();
-  connectRabbitWithRetry();
-});
+// Only bind the port (and start the RabbitMQ consumer) when the file is run
+// directly — `require('./app')` in the test suite must not open a socket or
+// spawn reconnect timers.
+if (require.main === module) {
+  app.listen(PORT, async () => {
+    console.log(`ROS service listening on port ${PORT}`);
+    await loadRoutesFromDb();
+    connectRabbitWithRetry();
+  });
+}
+
+module.exports = {
+  app,
+  pool,
+  vehicles,
+  routes,
+  todayKey,
+  routeIdFor,
+  toRadians,
+  haversineKm,
+  optimiseStops,
+  databaseStopStatus,
+  getOrCreateRoute,
+  addOrderToRoute,
+  loadRoutesFromDb,
+};
+

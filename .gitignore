@@ -45,3 +45,12 @@ desktop.ini
 # ── Logs ─────────────────────────────────────────────────────────────
 *.log
 logs/
+
+# ── Test & lint artefacts ────────────────────────────────────────────
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage/
+junit.xml
+

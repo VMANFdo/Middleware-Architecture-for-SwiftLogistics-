@@ -1,15 +1,13 @@
 import json
 import os
-import random
 import socket
 import threading
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pika
 import psycopg2
 from flask import Flask, jsonify, request
-
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
@@ -48,45 +46,44 @@ def assign_location(order_code):
 
 
 def register_package(order_code):
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, weight_kg FROM orders WHERE order_code = %s",
-                (order_code,),
-            )
-            order_row = cur.fetchone()
-            if order_row is None:
-                return {"success": False, "message": "Order not found"}
+    with get_db_connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, weight_kg FROM orders WHERE order_code = %s",
+            (order_code,),
+        )
+        order_row = cur.fetchone()
+        if order_row is None:
+            return {"success": False, "message": "Order not found"}
 
-            order_id, weight_kg = order_row
-            cur.execute(
-                """
+        order_id, weight_kg = order_row
+        cur.execute(
+            """
                 SELECT id, barcode, warehouse_zone, bin_location, status
                 FROM packages
                 WHERE order_id = %s
                 ORDER BY warehouse_event_at DESC
                 LIMIT 1
                 """,
-                (order_id,),
-            )
-            existing = cur.fetchone()
-            if existing:
-                return {
-                    "success": True,
-                    "package_id": str(existing[0]),
-                    "order_code": order_code,
-                    "barcode": existing[1],
-                    "warehouse_zone": existing[2],
-                    "bin_location": existing[3],
-                    "status": existing[4],
-                    "weight_kg": float(weight_kg) if weight_kg is not None else None,
-                    "already_registered": True,
-                }
+            (order_id,),
+        )
+        existing = cur.fetchone()
+        if existing:
+            return {
+                "success": True,
+                "package_id": str(existing[0]),
+                "order_code": order_code,
+                "barcode": existing[1],
+                "warehouse_zone": existing[2],
+                "bin_location": existing[3],
+                "status": existing[4],
+                "weight_kg": float(weight_kg) if weight_kg is not None else None,
+                "already_registered": True,
+            }
 
-            warehouse_zone, bin_location = assign_location(order_code)
-            barcode = f"BC-{order_code}"
-            cur.execute(
-                """
+        warehouse_zone, bin_location = assign_location(order_code)
+        barcode = f"BC-{order_code}"
+        cur.execute(
+            """
                 INSERT INTO packages (
                     order_id,
                     barcode,
@@ -97,9 +94,9 @@ def register_package(order_code):
                 VALUES (%s, %s, %s, %s, 'received')
                 RETURNING id, barcode, warehouse_zone, bin_location, status
                 """,
-                (order_id, barcode, warehouse_zone, bin_location),
-            )
-            package = cur.fetchone()
+            (order_id, barcode, warehouse_zone, bin_location),
+        )
+        package = cur.fetchone()
 
     return {
         "success": True,
@@ -115,11 +112,10 @@ def register_package(order_code):
 
 
 def get_package(order_code=None, barcode=None):
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            if order_code:
-                cur.execute(
-                    """
+    with get_db_connection() as conn, conn.cursor() as cur:
+        if order_code:
+            cur.execute(
+                """
                     SELECT p.id, o.order_code, p.barcode, p.warehouse_zone,
                            p.bin_location, p.status, p.warehouse_event_at
                     FROM packages p
@@ -128,11 +124,11 @@ def get_package(order_code=None, barcode=None):
                     ORDER BY p.warehouse_event_at DESC
                     LIMIT 1
                     """,
-                    (order_code,),
-                )
-            else:
-                cur.execute(
-                    """
+                (order_code,),
+            )
+        else:
+            cur.execute(
+                """
                     SELECT p.id, o.order_code, p.barcode, p.warehouse_zone,
                            p.bin_location, p.status, p.warehouse_event_at
                     FROM packages p
@@ -141,10 +137,10 @@ def get_package(order_code=None, barcode=None):
                     ORDER BY p.warehouse_event_at DESC
                     LIMIT 1
                     """,
-                    (barcode,),
-                )
+                (barcode,),
+            )
 
-            row = cur.fetchone()
+        row = cur.fetchone()
 
     if row is None:
         return {"success": False, "message": "Package not found"}
@@ -168,11 +164,10 @@ def update_package_status(order_code=None, barcode=None, status=None):
             "message": f"Invalid status. Use one of: {sorted(ALLOWED_STATUSES)}",
         }
 
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            if order_code:
-                cur.execute(
-                    """
+    with get_db_connection() as conn, conn.cursor() as cur:
+        if order_code:
+            cur.execute(
+                """
                     UPDATE packages p
                     SET status = %s,
                         warehouse_event_at = now()
@@ -182,11 +177,11 @@ def update_package_status(order_code=None, barcode=None, status=None):
                     RETURNING p.id, o.order_code, p.barcode,
                               p.warehouse_zone, p.bin_location, p.status
                     """,
-                    (status, order_code),
-                )
-            else:
-                cur.execute(
-                    """
+                (status, order_code),
+            )
+        else:
+            cur.execute(
+                """
                     UPDATE packages p
                     SET status = %s,
                         warehouse_event_at = now()
@@ -196,10 +191,10 @@ def update_package_status(order_code=None, barcode=None, status=None):
                     RETURNING p.id, o.order_code, p.barcode,
                               p.warehouse_zone, p.bin_location, p.status
                     """,
-                    (status, barcode),
-                )
+                (status, barcode),
+            )
 
-            row = cur.fetchone()
+        row = cur.fetchone()
 
     if row is None:
         return {"success": False, "message": "Package not found"}
@@ -222,10 +217,9 @@ def update_package_status_by_id(package_id, status):
             "message": f"Invalid status. Use one of: {sorted(ALLOWED_STATUSES)}",
         }
 
-    with get_db_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
+    with get_db_connection() as conn, conn.cursor() as cur:
+        cur.execute(
+            """
                 UPDATE packages p
                 SET status = %s,
                     warehouse_event_at = now()
@@ -235,9 +229,9 @@ def update_package_status_by_id(package_id, status):
                 RETURNING p.id, o.order_code, p.barcode,
                           p.warehouse_zone, p.bin_location, p.status
                 """,
-                (status, package_id),
-            )
-            row = cur.fetchone()
+            (status, package_id),
+        )
+        row = cur.fetchone()
 
     if row is None:
         return {"success": False, "message": "Package not found"}
@@ -329,7 +323,7 @@ def publish_wms_event(package_payload):
         body=json.dumps(
             {
                 "event_type": "WMS_PROCESSING_COMPLETE",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "data": package_payload,
             }
         ),

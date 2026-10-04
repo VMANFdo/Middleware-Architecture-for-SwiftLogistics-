@@ -1,0 +1,19 @@
+# Build context exclusions for the shared Python test image (Dockerfile.test).
+# The context is the repository root, so keep it small and deterministic.
+
+.git
+.venv
+venv
+env
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.ruff_cache
+node_modules
+**/node_modules
+.vscode
+.idea
+DockerDesktopWSL
+.kilo
+*.log
+logs

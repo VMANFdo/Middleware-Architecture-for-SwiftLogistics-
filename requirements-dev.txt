@@ -1,0 +1,11 @@
+# Development / test tooling for the SwiftTrack Python services.
+# Install with:  pip install -r requirements-dev.txt
+#
+# Service runtime dependencies are pulled in so the test suite can import
+# cms-service/app.py and wms-service/app.py without Docker.
+
+ruff==0.16.10
+pytest==9.1.1
+
+-r cms-service/requirements.txt
+-r wms-service/requirements.txt
