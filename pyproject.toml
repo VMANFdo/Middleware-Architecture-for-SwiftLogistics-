@@ -1,0 +1,36 @@
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+extend-exclude = [
+    ".venv",
+    "DockerDesktopWSL",
+    ".kilo",
+    "node_modules",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort (import sorting)
+    "B",   # flake8-bugbear (common bug patterns)
+    "UP",  # pyupgrade
+    "C4",  # comprehensions
+    "SIM", # simplifications
+]
+ignore = [
+    "SIM105", # try/except/pass is fine for context managers
+    "SIM108", # ternary rewrites are usually less readable here
+    "B008",   # Flask/Werkzeug dependency-injection style defaults
+]
+
+[tool.ruff.lint.per-file-ignores]
+"cms-service/app.py" = ["E402"] # module-level side effects after WSGI wiring
+"wms-service/app.py" = ["E402"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["cms-service", "wms-service"]
+python_files = ["test_*.py"]
+addopts = "-q --strict-markers"

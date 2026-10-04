@@ -1,0 +1,78 @@
+# One-shot test stack for the whole platform.
+#
+#   docker compose -f docker-compose.test.yml up --build --exit-code-from tests
+#
+# Builds a single image with Python 3.11 + Node 20 (see Dockerfile.test),
+# runs every lint and test suite inside it, and propagates a non-zero exit
+# code if anything fails — so the command is CI-ready with no host tooling.
+#
+# The per-suite services below are behind the `suite` profile: they are only
+# started when targeted explicitly, which keeps the one-shot `up` fast.
+#
+#   docker compose -f docker-compose.test.yml run --rm wms-tests
+#   docker compose -f docker-compose.test.yml run --rm ros-tests
+
+name: swifttrack-tests
+
+services:
+  # ── Everything ─────────────────────────────────────────────────────────
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    command: ["bash", "scripts/test-all.sh"]
+
+  # ── Python (targeted) ──────────────────────────────────────────────────
+  lint:
+    profiles: ["suite"]
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    volumes:
+      - ./:/app
+    command: ["ruff", "check", "."]
+
+  cms-tests:
+    profiles: ["suite"]
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    volumes:
+      - ./cms-service:/app/cms-service
+      - ./wms-service:/app/wms-service
+      - ./pyproject.toml:/app/pyproject.toml:ro
+    command: ["pytest", "cms-service"]
+
+  wms-tests:
+    profiles: ["suite"]
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    volumes:
+      - ./cms-service:/app/cms-service
+      - ./wms-service:/app/wms-service
+      - ./pyproject.toml:/app/pyproject.toml:ro
+    command: ["pytest", "wms-service"]
+
+  # ── Node (targeted) ────────────────────────────────────────────────────
+  gateway-tests:
+    profiles: ["suite"]
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./api-gateway:/app
+      - gateway_node_modules:/app/node_modules
+    command: ["sh", "-c", "npm ci && npm run lint && npm test"]
+
+  ros-tests:
+    profiles: ["suite"]
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./ros-service:/app
+      - ros_node_modules:/app/node_modules
+    command: ["sh", "-c", "npm ci && npm run lint && npm test"]
+
+volumes:
+  gateway_node_modules:
+  ros_node_modules:

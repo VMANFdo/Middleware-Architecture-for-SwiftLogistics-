@@ -1,0 +1,51 @@
+# syntax=docker/dockerfile:1
+# =====================================================================
+# Shared test image for the whole SwiftTrack platform.
+#
+# Two runtimes in one image so a single `docker compose ... up
+# --exit-code-from tests` can exercise every service without the host
+# needing Python, Node or any package installed.
+#
+# Why Python at all: the host interpreter here is 3.13, and spyne 2.14.0
+# cannot import on it (its vendored `six` uses the find_module()/load_module()
+# import API removed in Python 3.12).  Tests therefore run on Python 3.11 —
+# the interpreter the services ship with — inside a venv layered on top of
+# the Debian bookworm packages (bookworm ships exactly 3.11).
+# =====================================================================
+FROM node:20-bookworm-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    VIRTUAL_ENV=/opt/venv \
+    PATH="/opt/venv/bin:$PATH"
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends python3 python3-venv; \
+    rm -rf /var/lib/apt/lists/*; \
+    python3 -m venv "${VIRTUAL_ENV}"; \
+    echo "node $(node --version) / npm $(npm --version) / $(python --version)"
+
+WORKDIR /app
+
+# ── Layer 1: Python dependencies (cached until requirements change) ───────
+COPY requirements-dev.txt pyproject.toml ./
+COPY cms-service/requirements.txt cms-service/requirements.txt
+COPY wms-service/requirements.txt wms-service/requirements.txt
+RUN pip install --no-cache-dir -r requirements-dev.txt
+
+# ── Layer 2: Node dependencies (cached until the lockfiles change) ────────
+COPY api-gateway/package.json api-gateway/package-lock.json api-gateway/
+COPY ros-service/package.json ros-service/package-lock.json ros-service/
+RUN npm ci --prefix api-gateway --no-audit --no-fund \
+ && npm ci --prefix ros-service --no-audit --no-fund
+
+# ── Layer 3: sources.  node_modules is dockerignored, so the copies above
+#    survive and the suites run against the checked-out code.
+COPY . .
+
+# cms-service/app.py and wms-service/app.py both expose a top-level module
+# named `app`; test-all.sh keeps them in separate pytest processes so they
+# never collide in sys.modules.
+CMD ["bash", "scripts/test-all.sh"]

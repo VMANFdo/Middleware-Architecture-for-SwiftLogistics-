@@ -22,8 +22,6 @@ const PORT = process.env.PORT || 3000;
 const CMS_SOAP_URL = process.env.CMS_SOAP_URL || 'http://localhost:8001/soap';
 const CMS_REST_URL = process.env.CMS_REST_URL || CMS_SOAP_URL.replace(/\/soap\/?$/, '');
 const ROS_REST_URL = process.env.ROS_REST_URL || 'http://localhost:8002';
-const WMS_TCP_HOST = process.env.WMS_TCP_HOST || 'localhost';
-const WMS_TCP_PORT = Number(process.env.WMS_TCP_PORT || 9000);
 const DOWNSTREAM_TIMEOUT_MS = Number(process.env.DOWNSTREAM_TIMEOUT_MS || 5000);
 const JWT_SECRET = process.env.JWT_SECRET || 'swiftlogistics-secret-key-2026';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '8h';
@@ -34,6 +32,13 @@ const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://swift_admin:swift
 const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://swift_admin:swift_pw_dev_only@rabbitmq:5672';
 
 const pool = new Pool({ connectionString: DATABASE_URL });
+
+// pg emits 'error' on the pool for failures on idle clients; with no listener
+// that becomes an uncaught exception and takes the whole gateway down.
+pool.on('error', (err) => {
+  console.error('Unexpected idle Postgres client error:', err.message);
+});
+
 
 const demoDrivers = new Map([
   ['kasun@swiftlogistics.lk', {
@@ -55,7 +60,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
+  if (process.env.NODE_ENV !== 'test') {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
+  }
   next();
 });
 
@@ -183,7 +190,7 @@ wss.on('connection', (ws) => {
           }));
         }
       }
-    } catch (err) {
+    } catch {
       // Ignore malformed incoming socket payloads
     }
   });
@@ -199,6 +206,10 @@ const heartbeatInterval = setInterval(() => {
     ws.ping();
   });
 }, 30000);
+
+// Do not let the heartbeat timer hold the event loop open on its own — the
+// HTTP server does that in production, and tests need the loop to drain.
+heartbeatInterval.unref();
 
 wss.on('close', () => clearInterval(heartbeatInterval));
 
@@ -253,6 +264,7 @@ async function getClientCodeById(clientId) {
     const res = await pool.query('SELECT client_code FROM clients WHERE id = $1', [clientId]);
     return res.rows[0]?.client_code || null;
   } catch (err) {
+    console.error(`DB query error for client ${clientId}:`, err.message);
     return null;
   }
 }
@@ -619,12 +631,20 @@ async function callCmsSoap(methodName, params) {
   return JSON.parse(resultText);
 }
 
+// Resolved per call rather than at module load so tests (and an operator
+// restarting only this process) can repoint the adapter without a rebuild.
+function wmsEndpoint() {
+  return {
+    host: process.env.WMS_TCP_HOST || 'localhost',
+    port: Number(process.env.WMS_TCP_PORT || 9000),
+  };
+}
+
 function sendWmsTcpCommand(command) {
   return new Promise((resolve, reject) => {
-    const socket = net.createConnection(
-      { host: WMS_TCP_HOST, port: WMS_TCP_PORT },
-      () => socket.write(`${JSON.stringify(command)}\n`),
-    );
+    const socket = net.createConnection(wmsEndpoint(), () => {
+      socket.write(`${JSON.stringify(command)}\n`);
+    });
     let buffer = '';
     let settled = false;
 
@@ -669,7 +689,7 @@ function sendWmsTcpCommand(command) {
 // =====================================================================
 
 app.get('/health', asyncRoute(async (req, res) => {
-  let dbOk = false;
+  let dbOk;
   try {
     await pool.query('SELECT 1');
     dbOk = true;
@@ -1036,7 +1056,7 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Not found', path: req.originalUrl });
 });
 
-app.use((error, req, res, next) => {
+app.use((error, req, res, _next) => {
   console.error('Gateway adapter error:', error.message);
   res.status(502).json({
     success: false,
@@ -1049,9 +1069,44 @@ app.use((error, req, res, next) => {
 // Start Gateway Server & Connect RabbitMQ
 // =====================================================================
 
-server.listen(PORT, () => {
-  console.log(`SwiftTrack API Gateway listening on port ${PORT} (HTTP + WebSockets on /ws)`);
-  connectRabbitWithRetry();
-});
+function startGateway(listenPort = PORT) {
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(listenPort, () => {
+      server.removeListener('error', reject);
+      console.log(`SwiftTrack API Gateway listening on port ${listenPort} (HTTP + WebSockets on /ws)`);
+      connectRabbitWithRetry();
+      resolve(server);
+    });
+  });
+}
 
-module.exports = app;
+if (require.main === module) {
+  startGateway().catch((err) => {
+    console.error('Gateway failed to start:', err.message);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  app,
+  server,
+  startGateway,
+  pool,
+  activeSagas,
+  wss,
+  asyncRoute,
+  createAccessToken,
+  authenticateToken,
+  requireRole,
+  escapeXml,
+  buildSoapEnvelope,
+  findSoapResult,
+  callCmsSoap,
+  sendWmsTcpCommand,
+  dispatchWebSocketMessage,
+  handleSagaEvent,
+  executeSagaCompensation,
+  logSagaStep,
+};
+

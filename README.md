@@ -139,6 +139,55 @@ Container-to-container communication always uses the internal ports — only the
 
 ---
 
+## Running the tests
+
+The whole suite runs inside Docker, so no Python, Node or k6 install is needed:
+
+```bash
+docker compose -f docker-compose.test.yml up --build --exit-code-from tests
+```
+
+That one command lints every service and runs all **266** unit/integration tests
+(ESLint ×2, Ruff, jest ×2, pytest ×2); a non-zero exit code means something failed.
+
+With the host toolchains installed you can also run suites individually:
+
+| Suite | Command |
+|---|---|
+| Lint everything | `./scripts/lint.sh` · `.\scripts\lint.ps1` |
+| API Gateway — jest (95) | `cd api-gateway && npm test` |
+| ROS — jest (45) | `cd ros-service && npm test` |
+| CMS — pytest (73) | `pytest cms-service` |
+| WMS — pytest (53) | `pytest wms-service` |
+
+> The Python suites need **Python 3.11** — `spyne 2.14` cannot import on
+> Python 3.12+. `Dockerfile.test` provides it; locally use a 3.11 venv.
+
+### End-to-end smoke test
+
+Drives the *running* stack over HTTP, SOAP, raw TCP and WebSocket: client and
+driver login, order creation, saga completion, barcode scan, proof of delivery,
+then re-reads every status.
+
+```bash
+docker compose up -d --wait
+./scripts/smoke.sh                  # .\scripts\smoke.ps1 on Windows
+./scripts/smoke.sh --only delivery  # filter checks by name
+```
+
+### Load test
+
+```bash
+./scripts/loadtest.sh                          # 60 VUs x 60 s
+.\scripts\loadtest.ps1 -Vus 10 -Duration 15s   # quick pass
+```
+
+Uses a local `k6` when available, otherwise the official Grafana image on the
+compose network. See the *Phase 1 result* section of
+[`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md) for the current baseline.
+
+---
+
 ## Service Port Map
 
 | Port | Service | Protocol |
@@ -253,3 +302,9 @@ After connecting, send a JSON registration message to receive targeted events:
 | 5 | Saga coordinator, RabbitMQ pub/sub, WebSocket real-time dispatch | ✅ Complete |
 | 6 | Integration testing & load testing | ✅ Complete |
 | 7 | Final documentation & screencast | ✅ Complete |
+
+> The "Integration testing & load testing" row is now backed by 266 automated
+> tests, a 46-check end-to-end smoke script and `loadtest/k6-orders.js`.
+> The k6 latency target (p95 < 1500 ms at 60 VUs) is **not yet met** — the
+> root cause and baseline numbers are recorded in
+> [`IMPLEMENTATION_PLAN.md`](IMPLEMENTATION_PLAN.md).

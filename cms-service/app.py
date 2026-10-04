@@ -1,6 +1,6 @@
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import bcrypt
 import pika
@@ -11,7 +11,6 @@ from spyne.protocol.soap import Soap11
 from spyne.server.wsgi import WsgiApplication
 from werkzeug.middleware.dispatcher import DispatcherMiddleware
 from werkzeug.serving import run_simple
-
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
@@ -62,17 +61,16 @@ def rest_client_orders(client_code):
 @flask_app.route("/api/orders/status/<order_code>", methods=["GET"])
 def rest_order_status(order_code):
     try:
-        with get_db_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with get_db_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
                     SELECT o.order_code, o.status, o.created_at, o.updated_at
                     FROM orders o
                     WHERE o.order_code = %s
                     """,
-                    (order_code,),
-                )
-                row = cur.fetchone()
+                (order_code,),
+            )
+            row = cur.fetchone()
 
         if row is None:
             return jsonify({"success": False, "message": "Order not found"}), 404
@@ -110,24 +108,23 @@ def rest_record_delivery(order_code):
         return jsonify({"success": False, "message": "Failure reason is required"}), 400
 
     try:
-        with get_db_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT id FROM orders WHERE order_code = %s", (order_code,))
-                order_row = cur.fetchone()
-                cur.execute("SELECT id FROM drivers WHERE driver_code = %s", (driver_code,))
-                driver_row = cur.fetchone()
+        with get_db_connection() as conn, conn.cursor() as cur:
+            cur.execute("SELECT id FROM orders WHERE order_code = %s", (order_code,))
+            order_row = cur.fetchone()
+            cur.execute("SELECT id FROM drivers WHERE driver_code = %s", (driver_code,))
+            driver_row = cur.fetchone()
 
-                if order_row is None:
-                    return jsonify({"success": False, "message": "Order not found"}), 404
-                if driver_row is None:
-                    return jsonify({"success": False, "message": "Driver not found"}), 404
+            if order_row is None:
+                return jsonify({"success": False, "message": "Order not found"}), 404
+            if driver_row is None:
+                return jsonify({"success": False, "message": "Driver not found"}), 404
 
-                cur.execute(
-                    "UPDATE orders SET status = %s WHERE id = %s",
-                    (delivery_status, order_row[0]),
-                )
-                cur.execute(
-                    """
+            cur.execute(
+                "UPDATE orders SET status = %s WHERE id = %s",
+                (delivery_status, order_row[0]),
+            )
+            cur.execute(
+                """
                     INSERT INTO delivery_proofs (
                         order_id, driver_id, delivery_status, failure_reason,
                         recipient_name, notes, signature_base64
@@ -135,13 +132,13 @@ def rest_record_delivery(order_code):
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
                     RETURNING id, captured_at
                     """,
-                    (
-                        order_row[0], driver_row[0], delivery_status,
-                        failure_reason, recipient_name or None, notes,
-                        signature_base64,
-                    ),
-                )
-                proof_id, captured_at = cur.fetchone()
+                (
+                    order_row[0], driver_row[0], delivery_status,
+                    failure_reason, recipient_name or None, notes,
+                    signature_base64,
+                ),
+            )
+            proof_id, captured_at = cur.fetchone()
 
         return jsonify(
             {
@@ -203,17 +200,16 @@ def publish_order_created(event_payload):
 
 def authenticate_client_payload(email, password):
     try:
-        with get_db_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with get_db_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
                     SELECT client_code, company_name, email, password_hash
                     FROM clients
                     WHERE email = %s
                     """,
-                    (email,),
-                )
-                row = cur.fetchone()
+                (email,),
+            )
+            row = cur.fetchone()
 
         if row is None:
             return {"success": False, "message": "Client not found"}
@@ -240,21 +236,20 @@ def authenticate_client_payload(email, password):
 
 def create_order_payload(client_code, pickup_address, delivery_address, weight_kg):
     try:
-        with get_db_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT id FROM clients WHERE client_code = %s",
-                    (client_code,),
-                )
-                client_row = cur.fetchone()
+        with get_db_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM clients WHERE client_code = %s",
+                (client_code,),
+            )
+            client_row = cur.fetchone()
 
-                if client_row is None:
-                    return {"success": False, "message": "Client not found"}
+            if client_row is None:
+                return {"success": False, "message": "Client not found"}
 
-                client_id = client_row[0]
+            client_id = client_row[0]
 
-                cur.execute(
-                    """
+            cur.execute(
+                """
                     SELECT COALESCE(
                         MAX(CAST(SUBSTRING(order_code FROM 5) AS INTEGER)),
                         0
@@ -262,12 +257,12 @@ def create_order_payload(client_code, pickup_address, delivery_address, weight_k
                     FROM orders
                     WHERE order_code LIKE 'ORD-%'
                     """
-                )
-                next_number = cur.fetchone()[0]
-                order_code = f"ORD-{next_number:04d}"
+            )
+            next_number = cur.fetchone()[0]
+            order_code = f"ORD-{next_number:04d}"
 
-                cur.execute(
-                    """
+            cur.execute(
+                """
                     INSERT INTO orders (
                         order_code,
                         client_id,
@@ -279,21 +274,21 @@ def create_order_payload(client_code, pickup_address, delivery_address, weight_k
                     VALUES (%s, %s, %s, %s, %s, 'pending')
                     RETURNING order_code, status, created_at
                     """,
-                    (
-                        order_code,
-                        client_id,
-                        pickup_address,
-                        delivery_address,
-                        weight_kg,
-                    ),
-                )
-                created_order = cur.fetchone()
+                (
+                    order_code,
+                    client_id,
+                    pickup_address,
+                    delivery_address,
+                    weight_kg,
+                ),
+            )
+            created_order = cur.fetchone()
 
         pickup_lat, pickup_lng = estimate_coordinates(pickup_address)
         delivery_lat, delivery_lng = estimate_coordinates(delivery_address)
         event_payload = {
             "event_type": "ORDER_CREATED",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "data": {
                 "order_code": order_code,
                 "client_code": client_code,
@@ -327,10 +322,9 @@ def create_order_payload(client_code, pickup_address, delivery_address, weight_k
 
 def get_client_orders_payload(client_code):
     try:
-        with get_db_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
+        with get_db_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
                     SELECT o.order_code,
                            o.pickup_address,
                            o.delivery_address,
@@ -342,9 +336,9 @@ def get_client_orders_payload(client_code):
                     WHERE c.client_code = %s
                     ORDER BY o.created_at DESC
                     """,
-                    (client_code,),
-                )
-                rows = cur.fetchall()
+                (client_code,),
+            )
+            rows = cur.fetchall()
 
         orders = [
             {
@@ -398,4 +392,7 @@ soap_app = Application(
 
 application = DispatcherMiddleware(flask_app, {"/soap": WsgiApplication(soap_app)})
 
-run_simple("0.0.0.0", 8001, application)
+# Binding the port must only happen when the module is executed directly —
+# `import app` from the test suite would otherwise block on a live server.
+if __name__ == "__main__":
+    run_simple("0.0.0.0", 8001, application)
